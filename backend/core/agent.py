@@ -8,6 +8,7 @@ from langgraph.graph.message import add_messages
 
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
+from backend.utils import TextProcessor
 
 
 class AgentState(TypedDict):
@@ -17,34 +18,6 @@ class AgentState(TypedDict):
 
 class LangGraphAgent:
     """LangGraph agent with multi-provider support and pluggable storage."""
-
-    @staticmethod
-    def _extract_text_content(content) -> str:
-        """
-        Extract text from content which can be either a string or list of blocks.
-
-        Args:
-            content: Either a string or list of content blocks (for thinking models)
-
-        Returns:
-            str: Extracted text content
-        """
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            # Content is a list of blocks (common for thinking/reasoning models)
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict):
-                    # Extract text from various possible formats
-                    if 'text' in block:
-                        text_parts.append(block['text'])
-                    elif 'content' in block:
-                        text_parts.append(block['content'])
-                elif isinstance(block, str):
-                    text_parts.append(block)
-            return ''.join(text_parts)
-        return ""
 
     def __init__(
         self,
@@ -149,17 +122,19 @@ class LangGraphAgent:
                     content = chunk.content
                     if content:
                         # Extract text from content (handles both string and list formats)
-                        text_content = self._extract_text_content(content)
+                        text_content = TextProcessor.extract_text_content(content)
                         if text_content:
                             full_response += text_content
                             yield text_content
         finally:
             # ALWAYS save the response, even if streaming was interrupted
             if conversation_id and full_response:
+                # Convert math delimiters before storing
+                converted_response = TextProcessor.convert_math_delimiters(full_response)
                 await self.storage.add_message(
                     conversation_id=conversation_id,
                     role="assistant",
-                    content=full_response,
+                    content=converted_response,
                     model=self.model_id
                 )
 
@@ -205,7 +180,9 @@ class LangGraphAgent:
 
         result = self.graph.invoke(initial_state)
         raw_content = result["messages"][-1].content
-        response = self._extract_text_content(raw_content)
+        response = TextProcessor.extract_text_content(raw_content)
+        # Convert math delimiters to standard format
+        response = TextProcessor.convert_math_delimiters(response)
 
         # Add assistant response to storage
         if conversation_id:

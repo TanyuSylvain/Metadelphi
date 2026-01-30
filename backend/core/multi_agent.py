@@ -19,6 +19,7 @@ from langgraph.graph import StateGraph, END
 
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
+from backend.utils import TextProcessor
 from backend.core.multi_agent_state import MultiAgentState, create_initial_state
 from backend.core.prompts import (
     MODERATOR_INIT_PROMPT,
@@ -60,34 +61,6 @@ class MultiAgentDebateWorkflow:
     Each role can use a different LLM model for specialized behavior.
     Uses sliding window approach for memory management.
     """
-
-    @staticmethod
-    def _extract_text_content(content) -> str:
-        """
-        Extract text from content which can be either a string or list of blocks.
-
-        Args:
-            content: Either a string or list of content blocks (for thinking models)
-
-        Returns:
-            str: Extracted text content
-        """
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            # Content is a list of blocks (common for thinking/reasoning models)
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict):
-                    # Extract text from various possible formats
-                    if 'text' in block:
-                        text_parts.append(block['text'])
-                    elif 'content' in block:
-                        text_parts.append(block['content'])
-                elif isinstance(block, str):
-                    text_parts.append(block)
-            return ''.join(text_parts)
-        return ""
 
     def __init__(
         self,
@@ -217,7 +190,7 @@ class MultiAgentDebateWorkflow:
         )
 
         response = self.moderator_llm.invoke([{"role": "user", "content": prompt}])
-        text_content = self._extract_text_content(response.content)
+        text_content = TextProcessor.extract_text_content(response.content)
         result = extract_json_from_response(text_content)
 
         if "error" in result:
@@ -312,7 +285,7 @@ class MultiAgentDebateWorkflow:
         )
 
         response = self.expert_llm.invoke([{"role": "user", "content": prompt}])
-        text_content = self._extract_text_content(response.content)
+        text_content = TextProcessor.extract_text_content(response.content)
         result = extract_json_from_response(text_content)
 
         if "error" in result:
@@ -344,7 +317,7 @@ class MultiAgentDebateWorkflow:
         )
 
         response = self.critic_llm.invoke([{"role": "user", "content": prompt}])
-        text_content = self._extract_text_content(response.content)
+        text_content = TextProcessor.extract_text_content(response.content)
         result = extract_json_from_response(text_content)
 
         if "error" in result:
@@ -417,7 +390,7 @@ class MultiAgentDebateWorkflow:
             )
 
         response = self.moderator_llm.invoke([{"role": "user", "content": prompt}])
-        text_content = self._extract_text_content(response.content)
+        text_content = TextProcessor.extract_text_content(response.content)
         result = extract_json_from_response(text_content)
 
         # Determine final termination status
@@ -645,9 +618,11 @@ class MultiAgentDebateWorkflow:
 
             # Check if direct answer
             if current_state.get("status") == "direct_answer":
+                # Convert math delimiters for streaming response
+                converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
                 yield {
                     "type": "done",
-                    "final_answer": current_state["final_answer"],
+                    "final_answer": converted_answer,
                     "was_direct_answer": True,
                     "termination_reason": "simple_question",
                     "total_iterations": 0
@@ -657,7 +632,7 @@ class MultiAgentDebateWorkflow:
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
-                        content=current_state["final_answer"],
+                        content=converted_answer,
                         model=self.moderator_model,
                         message_type="final_answer"
                     )
@@ -740,10 +715,11 @@ class MultiAgentDebateWorkflow:
                     "summary": current_state.get("previous_summary", "")
                 }
 
-            # Final result
+            # Final result - convert math delimiters for streaming response
+            converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
             yield {
                 "type": "done",
-                "final_answer": current_state["final_answer"],
+                "final_answer": converted_answer,
                 "was_direct_answer": False,
                 "termination_reason": current_state.get("termination_reason"),
                 "total_iterations": current_state.get("iteration", 1)
@@ -754,7 +730,7 @@ class MultiAgentDebateWorkflow:
                 await self.storage.add_message(
                     conversation_id=conversation_id,
                     role="assistant",
-                    content=current_state["final_answer"],
+                    content=converted_answer,
                     model=self.expert_model,
                     message_type="final_answer"
                 )

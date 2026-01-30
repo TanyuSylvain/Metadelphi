@@ -78,6 +78,10 @@ export class MarkdownRenderer {
     preProcessMath(text) {
         if (!this.katexAvailable) return { text, placeholders: null };
 
+        // Normalize LaTeX delimiters: convert \[ \] to $$ $$ and \( \) to $ $
+        text = text.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+        text = text.replace(/\\\((.*?)\\\)/g, '$$$1$$');
+
         const displayMath = [];
         const inlineMath = [];
 
