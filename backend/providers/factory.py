@@ -2,10 +2,12 @@
 Factory for creating and initializing LLM provider instances.
 """
 
+import logging
 from typing import Optional
-from .base import BaseLLMProvider
 from .registry import ProviderRegistry
 from backend.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderFactory:
@@ -16,6 +18,7 @@ class ProviderFactory:
         model_id: str,
         provider_name: Optional[str] = None,
         temperature: float = None,
+        json_mode: bool = False,
         **kwargs
     ):
         """
@@ -25,6 +28,9 @@ class ProviderFactory:
             model_id: Model ID to use (e.g., 'mistral-large-latest', 'qwen-max')
             provider_name: Optional provider name. If not provided, will auto-detect from model_id
             temperature: Sampling temperature (default: from config)
+            json_mode: If True, bind response_format={"type": "json_object"} for reliable JSON output.
+                       Note: JSON mode is incompatible with thinking mode. When thinking is enabled,
+                       use ProviderFactory.convert_to_json() to post-process responses instead.
             **kwargs: Additional provider-specific configuration
 
         Returns:
@@ -35,7 +41,7 @@ class ProviderFactory:
 
         Example:
             >>> llm = ProviderFactory.create_llm("mistral-large-latest")
-            >>> llm = ProviderFactory.create_llm("qwen-max", provider_name="qwen")
+            >>> llm = ProviderFactory.create_llm("gpt-4o", json_mode=True)
         """
         # Use configured temperature if not specified
         if temperature is None:
@@ -60,13 +66,28 @@ class ProviderFactory:
         if base_url:
             kwargs["base_url"] = base_url
 
-        # Initialize and return the LLM
-        return provider.initialize(
+        # Check if thinking mode is enabled
+        thinking_enabled = kwargs.get("thinking", False)
+
+        # Initialize the LLM
+        llm = provider.initialize(
             model_id=model_id,
             api_key=api_key,
             temperature=temperature,
             **kwargs
         )
+
+        # Bind JSON mode if requested (but not when thinking is enabled - they're incompatible)
+        if json_mode and not thinking_enabled:
+            try:
+                llm = llm.bind(response_format={"type": "json_object"})
+                logger.info(f"LLM bound with JSON mode: {model_id}")
+            except Exception as e:
+                logger.warning(f"JSON mode not supported for {model_id}, using default: {e}")
+        elif json_mode and thinking_enabled:
+            logger.info(f"JSON mode skipped for {model_id} (thinking enabled) - use convert_to_json() for post-processing")
+
+        return llm
 
     @staticmethod
     def get_provider_info(provider_name: str) -> dict:

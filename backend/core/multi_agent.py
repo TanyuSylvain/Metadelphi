@@ -10,7 +10,6 @@ Uses LangGraph for workflow orchestration with sliding window memory management.
 """
 
 import json
-import re
 import logging
 from datetime import datetime
 from typing import Optional, AsyncGenerator, Literal
@@ -19,7 +18,7 @@ from langgraph.graph import StateGraph, END
 
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
-from backend.utils import TextProcessor
+from backend.utils import TextProcessor, json_converter
 from backend.core.multi_agent_state import MultiAgentState, create_initial_state
 from backend.core.prompts import (
     MODERATOR_INIT_PROMPT,
@@ -34,24 +33,6 @@ from backend.core.prompts import (
 
 
 logger = logging.getLogger(__name__)
-
-
-def extract_json_from_response(text: str) -> dict:
-    """Extract JSON from LLM response, handling markdown code blocks."""
-    # Try to find JSON in code blocks first
-    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
-    if json_match:
-        json_str = json_match.group(1).strip()
-    else:
-        # Try to find raw JSON
-        json_str = text.strip()
-
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse JSON: {e}")
-        # Return a default error structure
-        return {"error": "Failed to parse response", "raw": text}
 
 
 class MultiAgentDebateWorkflow:
@@ -96,21 +77,30 @@ class MultiAgentDebateWorkflow:
         self.max_iterations = max_iterations
         self.score_threshold = score_threshold
 
-        # Initialize LLMs for each role with thinking parameters
+        # Store thinking flags for JSON conversion handling
+        self.thinking_moderator = thinking_moderator
+        self.thinking_expert = thinking_expert
+        self.thinking_critic = thinking_critic
+
+        # Initialize LLMs for each role with JSON mode for reliable structured output
+        # Note: When thinking is enabled, JSON mode is skipped and we use post-processing instead
         self.moderator_llm = ProviderFactory.create_llm(
             model_id=moderator_model,
             temperature=temperature,
-            thinking=thinking_moderator
+            thinking=thinking_moderator,
+            json_mode=True
         )
         self.expert_llm = ProviderFactory.create_llm(
             model_id=expert_model,
             temperature=temperature,
-            thinking=thinking_expert
+            thinking=thinking_expert,
+            json_mode=True
         )
         self.critic_llm = ProviderFactory.create_llm(
             model_id=critic_model,
             temperature=temperature,
-            thinking=thinking_critic
+            thinking=thinking_critic,
+            json_mode=True
         )
 
         # Initialize storage
@@ -191,7 +181,7 @@ class MultiAgentDebateWorkflow:
 
         response = self.moderator_llm.invoke([{"role": "user", "content": prompt}])
         text_content = TextProcessor.extract_text_content(response.content)
-        result = extract_json_from_response(text_content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_moderator)
 
         if "error" in result:
             # Fallback: treat as complex question
@@ -286,7 +276,7 @@ class MultiAgentDebateWorkflow:
 
         response = self.expert_llm.invoke([{"role": "user", "content": prompt}])
         text_content = TextProcessor.extract_text_content(response.content)
-        result = extract_json_from_response(text_content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_expert)
 
         if "error" in result:
             # Fallback: create basic answer structure
@@ -318,7 +308,7 @@ class MultiAgentDebateWorkflow:
 
         response = self.critic_llm.invoke([{"role": "user", "content": prompt}])
         text_content = TextProcessor.extract_text_content(response.content)
-        result = extract_json_from_response(text_content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_critic)
 
         if "error" in result:
             # Fallback: create basic review structure
@@ -391,7 +381,7 @@ class MultiAgentDebateWorkflow:
 
         response = self.moderator_llm.invoke([{"role": "user", "content": prompt}])
         text_content = TextProcessor.extract_text_content(response.content)
-        result = extract_json_from_response(text_content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_moderator)
 
         # Determine final termination status
         should_end = forced_termination or result.get("decision") == "end"
@@ -402,6 +392,7 @@ class MultiAgentDebateWorkflow:
             final_answer = result.get("final_answer")
             if not final_answer:
                 # Use current answer's conclusion as fallback
+                logger.warning(f"No final_answer from moderator (forced={forced_termination}), using expert answer fallback")
                 answer = state.get("current_answer", {})
                 final_answer = f"""## 回答
 
@@ -419,7 +410,7 @@ class MultiAgentDebateWorkflow:
                 "previous_summary": state.get("previous_summary", "") + "\n" + result.get("iteration_summary", ""),
                 "moderator_synthesize_analysis": {
                     "feedback_validation": result.get("feedback_validation"),
-                    "decision": result.get("decision"),
+                    "decision": "end",  # Always "end" when should_end is True
                     "improvement_guidance": result.get("improvement_guidance"),
                     "iteration_summary": result.get("iteration_summary"),
                     "termination_reason": termination_reason

@@ -53,6 +53,13 @@ class QwenProvider(BaseLLMProvider):
                 "supports_thinking": False
             },
             {
+                "id": "qwen-flash",
+                "name": "Qwen3 Flash",
+                "description": "Qwen3 Flash model",
+                "supports_thinking": True,
+                "thinking_locked": False,
+            },
+            {
                 "id": "deepseek-v3.2",
                 "name": "DeepSeek V3.2",
                 "description": "DeepSeek V3.2",
