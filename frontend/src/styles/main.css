@@ -1805,3 +1805,264 @@ body {
     padding: 0.5rem 1rem;
     min-height: 40px;
 }
+
+/* ========================================
+   Coworking Agent Styles
+   ======================================== */
+
+/* Coworking Config Panel */
+.coworking-config-container {
+    padding: 0;
+}
+
+.coworking-config {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px 16px;
+}
+
+.coworking-config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workspace-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #555;
+    white-space: nowrap;
+}
+
+.workspace-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+
+.workspace-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+/* Coworking Panel (Right Side) */
+.coworking-panel {
+    flex: var(--debate-flex, 0.4);
+    width: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-left: 1px solid #e0e0e0;
+    overflow-y: auto;
+}
+
+.coworking-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.coworking-panel-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+/* Tool Execution Viewer */
+.tool-execution-viewer {
+    padding: 12px;
+    flex: 1;
+}
+
+.tool-section {
+    margin-bottom: 16px;
+}
+
+.tool-section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eee;
+}
+
+.tool-empty {
+    color: #999;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+/* Plan Steps */
+.plan-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.plan-step.active {
+    color: #333;
+    font-weight: 500;
+}
+
+.plan-step.done {
+    color: #999;
+}
+
+.plan-step-icon {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+}
+
+.plan-step-text {
+    line-height: 1.4;
+}
+
+/* Tool Cards */
+.tool-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.tool-card.running {
+    border-color: #667eea;
+}
+
+.tool-card.done {
+    border-color: #28a745;
+}
+
+.tool-card.error {
+    border-color: #dc3545;
+}
+
+.tool-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tool-card-header:hover {
+    background: #f0f0f0;
+}
+
+.tool-status-icon {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+}
+
+.tool-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #333;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.tool-toggle {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: #999;
+}
+
+.tool-card-body {
+    padding: 10px 12px;
+    border-top: 1px solid #e0e0e0;
+    background: #fff;
+}
+
+.tool-detail {
+    margin-bottom: 8px;
+}
+
+.tool-detail:last-child {
+    margin-bottom: 0;
+}
+
+.tool-detail-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.tool-detail-content {
+    font-size: 0.8rem;
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 0;
+}
+
+/* Tool Spinner */
+.tool-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #667eea;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: tool-spin 0.8s linear infinite;
+}
+
+@keyframes tool-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* File Items */
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 0.85rem;
+}
+
+.file-icon {
+    flex-shrink: 0;
+}
+
+.file-download-link {
+    color: #667eea;
+    text-decoration: none;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
+}
+
+.file-download-link:hover {
+    text-decoration: underline;
+}
+
+.file-size {
+    color: #999;
+    font-size: 0.78rem;
+}

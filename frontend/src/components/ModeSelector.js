@@ -6,12 +6,12 @@
 export class ModeSelector {
     constructor(containerElement) {
         this.container = containerElement;
-        this.currentMode = 'simple';  // 'simple' | 'multi-agent'
+        this.currentMode = 'simple';  // 'simple' | 'multi-agent' | 'coworking'
         this.onChangeCallback = null;
 
         // Load saved preference
         const savedMode = localStorage.getItem('chatMode');
-        if (savedMode === 'simple' || savedMode === 'multi-agent') {
+        if (savedMode === 'simple' || savedMode === 'multi-agent' || savedMode === 'coworking') {
             this.currentMode = savedMode;
         }
     }
@@ -46,6 +46,14 @@ export class ModeSelector {
                     <span class="mode-icon">&#x1F465;</span>
                     <span class="mode-label">Debate</span>
                 </button>
+                <button
+                    class="mode-btn ${this.currentMode === 'coworking' ? 'active' : ''}"
+                    data-mode="coworking"
+                    title="Agent with tools for file operations, code execution, and document generation"
+                >
+                    <span class="mode-icon">&#x1F6E0;</span>
+                    <span class="mode-label">Coworking</span>
+                </button>
             </div>
         `;
     }
@@ -68,7 +76,7 @@ export class ModeSelector {
      * @param {string} mode - 'simple' or 'multi-agent'
      */
     setMode(mode) {
-        if (mode !== 'simple' && mode !== 'multi-agent') {
+        if (mode !== 'simple' && mode !== 'multi-agent' && mode !== 'coworking') {
             return;
         }
 
@@ -101,6 +109,14 @@ export class ModeSelector {
      */
     isMultiAgentMode() {
         return this.currentMode === 'multi-agent';
+    }
+
+    /**
+     * Check if coworking mode is active
+     * @returns {boolean} True if coworking mode
+     */
+    isCoworkingMode() {
+        return this.currentMode === 'coworking';
     }
 
     /**

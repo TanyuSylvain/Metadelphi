@@ -129,10 +129,10 @@ async def switch_mode(conversation_id: str, request: SwitchModeRequest):
         Switch mode response with success status
     """
     # Validate target mode
-    if request.target_mode not in ("simple", "debate"):
+    if request.target_mode not in ("simple", "debate", "coworking"):
         raise HTTPException(
             status_code=400,
-            detail="target_mode must be 'simple' or 'debate'"
+            detail="target_mode must be 'simple', 'debate', or 'coworking'"
         )
 
     # Create mode manager

@@ -27,7 +27,7 @@ class ConversationModeManager:
     async def switch_mode(
         self,
         conversation_id: str,
-        target_mode: Literal["simple", "debate"],
+        target_mode: Literal["simple", "debate", "coworking"],
         model_config: Optional[Dict] = None
     ) -> Dict:
         """
@@ -86,6 +86,10 @@ class ConversationModeManager:
                 }
 
             message = "Switched to debate mode. Previous conversation context prepared."
+
+        elif target_mode == "coworking":
+            # Switching to coworking mode
+            message = "Switched to coworking mode."
 
         else:
             # Switching to simple mode

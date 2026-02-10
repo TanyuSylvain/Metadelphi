@@ -392,6 +392,118 @@ export class APIClient {
     }
 
     /**
+     * Stream a coworking agent response
+     * @param {string} message - User message
+     * @param {string} conversationId - Conversation ID
+     * @param {string} modelId - Model ID to use
+     * @param {string} workspacePath - Workspace directory path
+     * @param {boolean} thinking - Enable thinking mode
+     * @param {number} maxIterations - Max ReAct loop iterations
+     * @param {Object} callbacks - Event callbacks
+     * @returns {Promise<void>}
+     */
+    async streamCoworkingChat(message, conversationId, modelId, workspacePath, thinking, maxIterations, callbacks) {
+        try {
+            const body = {
+                message,
+                conversation_id: conversationId,
+                model: modelId,
+                workspace_path: workspacePath,
+                thinking: thinking || false,
+                max_iterations: maxIterations || 25
+            };
+
+            const response = await fetch(`${this.baseURL}/chat/coworking/stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Request failed');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process SSE events
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const eventData = JSON.parse(line.slice(6));
+                            this._handleCoworkingEvent(eventData, callbacks);
+                        } catch (e) {
+                            console.warn('Failed to parse coworking SSE event:', line);
+                        }
+                    }
+                }
+            }
+
+            // Process remaining buffer
+            if (buffer.startsWith('data: ')) {
+                try {
+                    const eventData = JSON.parse(buffer.slice(6));
+                    this._handleCoworkingEvent(eventData, callbacks);
+                } catch (e) {
+                    // Ignore incomplete
+                }
+            }
+        } catch (error) {
+            console.error('Error in coworking chat:', error);
+            if (callbacks.onError) {
+                callbacks.onError(error.message);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Handle a coworking agent SSE event
+     * @private
+     */
+    _handleCoworkingEvent(event, callbacks) {
+        switch (event.type) {
+            case 'plan':
+                if (callbacks.onPlan) callbacks.onPlan(event.steps);
+                break;
+            case 'thinking_chunk':
+                if (callbacks.onThinkingChunk) callbacks.onThinkingChunk(event.content);
+                break;
+            case 'tool_start':
+                if (callbacks.onToolStart) callbacks.onToolStart(event.tool_name, event.tool_input);
+                break;
+            case 'tool_result':
+                if (callbacks.onToolResult) callbacks.onToolResult(event.tool_name, event.output, event.success);
+                break;
+            case 'file_created':
+                if (callbacks.onFileCreated) callbacks.onFileCreated(event.file_path, event.file_size);
+                break;
+            case 'response_chunk':
+                if (callbacks.onResponseChunk) callbacks.onResponseChunk(event.content);
+                break;
+            case 'done':
+                if (callbacks.onDone) callbacks.onDone(event.final_answer, event.generated_files);
+                break;
+            case 'error':
+                if (callbacks.onError) callbacks.onError(event.error);
+                break;
+            default:
+                console.warn('Unknown coworking event type:', event.type);
+        }
+    }
+
+    /**
      * Send a multi-agent chat message and get complete response (non-streaming)
      * @param {string} message - User message
      * @param {string} conversationId - Conversation ID

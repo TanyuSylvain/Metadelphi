@@ -14,6 +14,8 @@ import { MultiAgentConfig } from './components/MultiAgentConfig.js';
 import { ProgressIndicator } from './components/ProgressIndicator.js';
 import { DebateViewer } from './components/DebateViewer.js';
 import ModeratorStatusIndicator from './components/ModeratorStatusIndicator.js';
+import { CoworkingConfig } from './components/CoworkingConfig.js';
+import { ToolExecutionViewer } from './components/ToolExecutionViewer.js';
 
 export class ChatApp {
     constructor() {
@@ -89,6 +91,19 @@ export class ChatApp {
             this.debateViewer = new DebateViewer(this.debateViewerElement, moderatorInitElement);
         }
 
+        // Initialize coworking components
+        this.coworkingConfigElement = document.getElementById('coworkingConfig');
+        this.coworkingConfig = null;
+        if (this.coworkingConfigElement) {
+            this.coworkingConfig = new CoworkingConfig(this.coworkingConfigElement);
+        }
+
+        this.toolExecutionViewerElement = document.getElementById('toolExecutionViewer');
+        this.toolExecutionViewer = null;
+        if (this.toolExecutionViewerElement) {
+            this.toolExecutionViewer = new ToolExecutionViewer(this.toolExecutionViewerElement);
+        }
+
         // Conversation state
         this.conversationId = this.loadOrCreateConversationId();
         this.messageComponent.setConversationId(this.conversationId);
@@ -99,6 +114,7 @@ export class ChatApp {
         this.isThinkingEnabled = false;
         this.isMarkdownEnabled = true;
         this.isMultiAgentMode = false;
+        this.isCoworkingMode = false;
 
         // Debate panel visibility state
         this.debatePanelVisible = false;
@@ -122,6 +138,15 @@ export class ChatApp {
             if (this.modeSelector) {
                 this.modeSelector.initialize();
                 this.isMultiAgentMode = this.modeSelector.isMultiAgentMode();
+                this.isCoworkingMode = this.modeSelector.isCoworkingMode();
+            }
+
+            // Initialize coworking components
+            if (this.coworkingConfig) {
+                this.coworkingConfig.initialize();
+            }
+            if (this.toolExecutionViewer) {
+                this.toolExecutionViewer.initialize();
             }
             if (this.multiAgentConfig) {
                 await this.multiAgentConfig.initialize();
@@ -146,9 +171,12 @@ export class ChatApp {
             // Load conversation history if exists
             await this.loadConversationHistory();
 
-            // Set initial chat container width based on mode and debate panel state
+            // Set initial chat container width based on mode and panel state
             if (!this.isMultiAgentMode || !this.debatePanelToggleOn) {
                 this.hideDebatePanel();
+            }
+            if (!this.isCoworkingMode) {
+                this.hideCoworkingPanel();
             }
 
             // Focus input
@@ -615,7 +643,16 @@ export class ChatApp {
             }
         }
 
-        // Show/hide simple mode controls
+        // Show/hide coworking config based on mode
+        if (this.coworkingConfig) {
+            if (this.isCoworkingMode) {
+                this.coworkingConfig.show();
+            } else {
+                this.coworkingConfig.hide();
+            }
+        }
+
+        // Show/hide simple mode controls (visible in simple and coworking modes)
         const simpleControls = document.querySelector('.model-selector-container');
         const thinkingContainer = document.querySelector('.thinking-toggle');
         if (simpleControls) {
@@ -632,7 +669,7 @@ export class ChatApp {
             console.error('Error updating debate toggle visibility:', error);
         }
 
-        // Auto-hide debate panel and status bars when switching to simple mode
+        // Auto-hide debate panel when not in debate mode
         if (!this.isMultiAgentMode) {
             try {
                 this.hideDebatePanel();
@@ -646,6 +683,15 @@ export class ChatApp {
             // Hide moderator status indicator
             if (this.moderatorStatusIndicator) {
                 this.moderatorStatusIndicator.hide();
+            }
+        }
+
+        // Auto-hide coworking panel when not in coworking mode
+        if (!this.isCoworkingMode) {
+            try {
+                this.hideCoworkingPanel();
+            } catch (error) {
+                console.error('Error hiding coworking panel:', error);
             }
         }
     }
@@ -750,7 +796,9 @@ export class ChatApp {
         if (!message || this.isProcessing) return;
 
         // Route to appropriate handler based on mode
-        if (this.isMultiAgentMode) {
+        if (this.isCoworkingMode) {
+            await this.sendCoworkingMessage(message);
+        } else if (this.isMultiAgentMode) {
             await this.sendMultiAgentMessage(message);
         } else {
             await this.sendSimpleMessage(message);
@@ -994,19 +1042,171 @@ export class ChatApp {
     }
 
     /**
+     * Send a message in coworking agent mode
+     */
+    async sendCoworkingMessage(message) {
+        const modelId = this.modelSelector.getSelectedModel();
+        if (!modelId) {
+            this.messageComponent.addErrorMessage('Please select a model');
+            return;
+        }
+
+        const workspacePath = this.coworkingConfig ? this.coworkingConfig.getWorkspacePath() : '';
+        if (!workspacePath) {
+            this.messageComponent.addErrorMessage('Please set a workspace path');
+            return;
+        }
+
+        // Update UI
+        this.messageComponent.addUserMessage(message);
+        this.messageInput.value = '';
+        this.messageInput.style.height = 'auto';
+        this.setProcessing(true);
+
+        // Show coworking panel
+        this.showCoworkingPanel();
+
+        // Clear previous tool execution display
+        if (this.toolExecutionViewer) {
+            this.toolExecutionViewer.clear();
+            this.toolExecutionViewer.setWorkspacePath(workspacePath);
+        }
+
+        // Show typing indicator
+        const typingIndicator = this.messageComponent.showTypingIndicator();
+
+        try {
+            let fullResponse = '';
+
+            await this.apiClient.streamCoworkingChat(
+                message,
+                this.conversationId,
+                modelId,
+                workspacePath,
+                this.isThinkingEnabled,
+                25,
+                {
+                    onPlan: (steps) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.setPlan(steps);
+                        }
+                    },
+                    onThinkingChunk: (content) => {
+                        fullResponse += content;
+                        this.messageComponent.updateMessage(
+                            typingIndicator,
+                            fullResponse,
+                            this.isMarkdownEnabled
+                        );
+                    },
+                    onToolStart: (toolName, toolInput) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.addToolStart(toolName, toolInput);
+                        }
+                    },
+                    onToolResult: (toolName, output, success) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.addToolResult(toolName, output, success);
+                        }
+                    },
+                    onFileCreated: (filePath, fileSize) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.addFileCreated(filePath, fileSize);
+                        }
+                    },
+                    onResponseChunk: (content) => {
+                        fullResponse += content;
+                        this.messageComponent.updateMessage(
+                            typingIndicator,
+                            fullResponse,
+                            this.isMarkdownEnabled
+                        );
+                    },
+                    onDone: (finalAnswer, generatedFiles) => {
+                        this.messageComponent.removeTypingIndicator(typingIndicator);
+                        if (finalAnswer) {
+                            this.messageComponent.addAssistantMessage(
+                                finalAnswer,
+                                this.isMarkdownEnabled
+                            );
+                        }
+                    },
+                    onError: (error) => {
+                        console.error('Coworking error:', error);
+                        this.messageComponent.removeTypingIndicator(typingIndicator);
+                        this.messageComponent.addErrorMessage(`Error: ${error}`);
+                    }
+                }
+            );
+
+            // Refresh sidebar
+            await this.sidebar.loadConversations();
+            this.sidebar.setCurrentConversation(this.conversationId);
+
+        } catch (error) {
+            console.error('Error in coworking chat:', error);
+            this.messageComponent.removeTypingIndicator(typingIndicator);
+            this.messageComponent.addErrorMessage(`Error: ${error.message}`);
+        } finally {
+            this.setProcessing(false);
+            this.messageInput.focus();
+        }
+    }
+
+    /**
+     * Show coworking panel (right side)
+     */
+    showCoworkingPanel() {
+        const coworkingPanel = document.getElementById('coworkingPanel');
+        const panelDivider = document.getElementById('panelDivider');
+        const chatContainer = document.querySelector('.chat-container');
+
+        if (coworkingPanel) {
+            coworkingPanel.style.display = 'flex';
+        }
+        if (panelDivider) {
+            panelDivider.classList.add('visible');
+        }
+        if (chatContainer) {
+            chatContainer.classList.remove('full-width');
+        }
+    }
+
+    /**
+     * Hide coworking panel
+     */
+    hideCoworkingPanel() {
+        const coworkingPanel = document.getElementById('coworkingPanel');
+        const panelDivider = document.getElementById('panelDivider');
+        const chatContainer = document.querySelector('.chat-container');
+
+        if (coworkingPanel) {
+            coworkingPanel.style.display = 'none';
+        }
+        if (panelDivider) {
+            panelDivider.classList.remove('visible');
+        }
+        if (chatContainer) {
+            chatContainer.classList.add('full-width');
+        }
+    }
+
+    /**
      * Handle mode change and transfer context if needed
      */
     async handleModeChange(mode) {
-        const targetMode = mode === 'multi-agent' ? 'debate' : 'simple';
+        const targetMode = mode === 'multi-agent' ? 'debate' : (mode === 'coworking' ? 'coworking' : 'simple');
         const wasMultiAgent = this.isMultiAgentMode;
-        console.log(`[ModeSwitch] Attempting to switch from ${wasMultiAgent ? 'debate' : 'simple'} to ${targetMode}`);
+        const wasCoworking = this.isCoworkingMode;
+        console.log(`[ModeSwitch] Attempting to switch to ${targetMode}`);
 
         // Update UI state first
         this.isMultiAgentMode = mode === 'multi-agent';
+        this.isCoworkingMode = mode === 'coworking';
         this.updateMultiAgentUIVisibility();
 
         // Check if mode actually changed
-        if (wasMultiAgent === this.isMultiAgentMode) {
+        if (wasMultiAgent === this.isMultiAgentMode && wasCoworking === this.isCoworkingMode) {
             console.log(`[ModeSwitch] Mode unchanged, no action needed`);
             return;
         }
@@ -1045,6 +1245,7 @@ export class ChatApp {
                 }
                 // Revert UI on failure
                 this.isMultiAgentMode = wasMultiAgent;
+                this.isCoworkingMode = wasCoworking;
                 this.updateMultiAgentUIVisibility();
             }
         } catch (error) {
@@ -1087,6 +1288,7 @@ export class ChatApp {
             }
             // Revert UI state on error
             this.isMultiAgentMode = wasMultiAgent;
+            this.isCoworkingMode = wasCoworking;
             this.updateMultiAgentUIVisibility();
         }
     }

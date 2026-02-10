@@ -238,6 +238,32 @@ class MultiAgentChatResponse(BaseModel):
 
 
 # =============================================================================
+# Coworking Agent Schemas
+# =============================================================================
+
+class CoworkingChatRequest(BaseModel):
+    """Request model for coworking agent chat endpoints."""
+    message: str = Field(..., description="User's message", min_length=1)
+    conversation_id: Optional[str] = Field(None, description="Optional conversation ID")
+    model: Optional[str] = Field(None, description="Model ID to use")
+    workspace_path: str = Field(..., description="Absolute path to workspace directory")
+    thinking: Optional[bool] = Field(False, description="Enable thinking mode")
+    max_iterations: int = Field(default=25, ge=1, le=50, description="Maximum ReAct loop iterations")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Create a hello.txt file with 'Hello World'",
+                "conversation_id": "conv-123",
+                "model": "qwen-max",
+                "workspace_path": "/tmp/workspace",
+                "thinking": False,
+                "max_iterations": 25
+            }
+        }
+
+
+# =============================================================================
 # Mode Switching Schemas
 # =============================================================================
 

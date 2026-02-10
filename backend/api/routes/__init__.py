@@ -8,6 +8,7 @@ from .chat import router as chat_router
 from .models import router as models_router
 from .conversations import router as conversations_router
 from .multi_agent_chat import router as multi_agent_chat_router
+from .coworking_chat import router as coworking_chat_router
 
 # Create main API router
 api_router = APIRouter()
@@ -18,5 +19,6 @@ api_router.include_router(chat_router)
 api_router.include_router(models_router)
 api_router.include_router(conversations_router)
 api_router.include_router(multi_agent_chat_router)
+api_router.include_router(coworking_chat_router)
 
 __all__ = ["api_router"]
