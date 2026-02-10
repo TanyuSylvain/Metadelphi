@@ -9,3 +9,4 @@ venv
 *.pyo
 *.pyd
 .Python
+CLAUDE.md
