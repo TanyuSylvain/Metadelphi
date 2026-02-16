@@ -480,6 +480,9 @@ export class APIClient {
      */
     _handleCoworkingEvent(event, callbacks) {
         switch (event.type) {
+            case 'previous_files':
+                if (callbacks.onPreviousFiles) callbacks.onPreviousFiles(event.files);
+                break;
             case 'plan':
                 if (callbacks.onPlan) callbacks.onPlan(event.steps);
                 break;

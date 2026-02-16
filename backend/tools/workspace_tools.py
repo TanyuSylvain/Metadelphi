@@ -7,6 +7,7 @@ All file operations are sandboxed within the workspace via path validation.
 
 import os
 import re
+import sys
 import subprocess
 import logging
 from typing import List
@@ -213,6 +214,37 @@ def create_workspace_tools(workspace_path: str) -> List:
             return f"Error executing command: {str(e)}"
 
     @tool
+    def check_package(package_name: str) -> str:
+        """Check if a Python package is installed in the current environment.
+
+        Args:
+            package_name: Name of the package to check (e.g., 'fpdf2', 'python-docx')
+        """
+        try:
+            if not PACKAGE_NAME_RE.match(package_name):
+                return f"Error: Invalid package name: '{package_name}'"
+
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "show", package_name],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                # Extract version from output
+                for line in result.stdout.splitlines():
+                    if line.startswith("Version:"):
+                        version = line.split(":", 1)[1].strip()
+                        return f"Package '{package_name}' is installed. Version: {version}"
+                return f"Package '{package_name}' is installed."
+            else:
+                return f"Package '{package_name}' is NOT installed."
+        except subprocess.TimeoutExpired:
+            return f"Error: Check timed out after 30 seconds."
+        except Exception as e:
+            return f"Error checking package: {str(e)}"
+
+    @tool
     def install_package(package_name: str) -> str:
         """Install a Python package using pip into the current environment.
 
@@ -224,7 +256,7 @@ def create_workspace_tools(workspace_path: str) -> List:
                 return f"Error: Invalid package name: '{package_name}'"
 
             result = subprocess.run(
-                ["pip", "install", package_name],
+                [sys.executable, "-m", "pip", "install", package_name],
                 capture_output=True,
                 text=True,
                 timeout=EXEC_TIMEOUT
@@ -244,4 +276,4 @@ def create_workspace_tools(workspace_path: str) -> List:
         except Exception as e:
             return f"Error installing package: {str(e)}"
 
-    return [read_file, write_file, list_directory, python_execute, bash_execute, install_package]
+    return [read_file, write_file, list_directory, python_execute, bash_execute, check_package, install_package]

@@ -1110,9 +1110,9 @@ export class ChatApp {
         // Show coworking panel
         this.showCoworkingPanel();
 
-        // Clear previous tool execution display
+        // Clear previous tool execution display (keep generated files across messages)
         if (this.toolExecutionViewer) {
-            this.toolExecutionViewer.clear();
+            this.toolExecutionViewer.clearForNewMessage();
             this.toolExecutionViewer.setWorkspacePath(workspacePath);
         }
 
@@ -1131,6 +1131,11 @@ export class ChatApp {
                 25,
                 this.isWebSearchEnabled,
                 {
+                    onPreviousFiles: (files) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.setGeneratedFiles(files);
+                        }
+                    },
                     onPlan: (steps) => {
                         if (this.toolExecutionViewer) {
                             this.toolExecutionViewer.setPlan(steps);
@@ -1376,6 +1381,9 @@ export class ChatApp {
             // Clear without removing storage (we'll load from storage)
             this.debateViewer.clear(false);
         }
+        if (this.toolExecutionViewer) {
+            this.toolExecutionViewer.clear();
+        }
         setStorage('conversationId', conversationId);
         this.sidebar.setCurrentConversation(conversationId);
 
@@ -1395,6 +1403,9 @@ export class ChatApp {
         if (this.debateViewer) {
             this.debateViewer.setConversationId(this.conversationId);
             this.debateViewer.clear();
+        }
+        if (this.toolExecutionViewer) {
+            this.toolExecutionViewer.clear();
         }
         setStorage('conversationId', this.conversationId);
         this.sidebar.setCurrentConversation(this.conversationId);

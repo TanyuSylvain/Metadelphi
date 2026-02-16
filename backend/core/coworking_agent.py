@@ -95,6 +95,22 @@ class CoworkingAgent:
         messages = await self.storage.get_messages(conversation_id)
         history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
+        # Load or initialize file tracking from conversation metadata
+        conv_metadata = (conversation or {}).get("metadata", {})
+        initial_workspace_files = conv_metadata.get("initial_workspace_files", None)
+        conversation_generated_files = conv_metadata.get("conversation_generated_files", [])
+
+        if initial_workspace_files is None:
+            # New conversation or first run — snapshot current workspace files
+            initial_workspace_files = self._list_all_files(workspace_path)
+            await self.storage.update_conversation_metadata(conversation_id, {
+                "initial_workspace_files": initial_workspace_files,
+                "conversation_generated_files": []
+            })
+
+        # known_files = initial files + files generated in previous messages
+        known_files = set(initial_workspace_files + conversation_generated_files)
+
         # Save user message to storage
         await self.storage.add_message(
             conversation_id=conversation_id,
@@ -120,8 +136,19 @@ class CoworkingAgent:
 
         # Track state
         iteration = 0
-        generated_files = []
+        generated_files = list(conversation_generated_files)
         final_response = ""
+
+        # Emit previous_files event so frontend can restore the file list
+        if conversation_generated_files:
+            previous_files_data = []
+            for f in conversation_generated_files:
+                try:
+                    fsize = os.path.getsize(os.path.join(workspace_path, f))
+                except Exception:
+                    fsize = 0
+                previous_files_data.append({"path": f, "size": fsize})
+            yield {"type": "previous_files", "files": previous_files_data}
 
         try:
             # === Planning + ReAct Loop ===
@@ -236,7 +263,9 @@ class CoworkingAgent:
                             file_size = os.path.getsize(full_path) if os.path.exists(full_path) else 0
                         except Exception:
                             file_size = 0
-                        generated_files.append(file_path)
+                        if file_path not in known_files:
+                            generated_files.append(file_path)
+                            known_files.add(file_path)
                         yield {
                             "type": "file_created",
                             "file_path": file_path,
@@ -246,9 +275,10 @@ class CoworkingAgent:
                     # Check python_execute/bash_execute for file creation hints
                     if tool_name in ("python_execute", "bash_execute") and not str(result).startswith("Error"):
                         # Scan workspace for new files after execution
-                        new_files = self._scan_for_new_files(workspace_path, generated_files)
+                        new_files = self._scan_for_new_files(workspace_path, known_files)
                         for nf in new_files:
                             generated_files.append(nf)
+                            known_files.add(nf)
                             try:
                                 file_size = os.path.getsize(os.path.join(workspace_path, nf))
                             except Exception:
@@ -288,10 +318,18 @@ class CoworkingAgent:
                     model=self.model_id
                 )
 
+            # Persist generated files to conversation metadata
+            await self.storage.update_conversation_metadata(conversation_id, {
+                "conversation_generated_files": generated_files
+            })
+
+            # Only emit newly generated files (exclude those from previous messages)
+            new_generated_files = [f for f in generated_files if f not in conversation_generated_files]
+
             yield {
                 "type": "done",
                 "final_answer": final_response,
-                "generated_files": generated_files
+                "generated_files": new_generated_files
             }
 
         except Exception as e:
@@ -301,8 +339,8 @@ class CoworkingAgent:
                 "error": str(e)
             }
 
-    def _scan_for_new_files(self, workspace_path: str, known_files: list) -> list:
-        """Scan workspace for files not in known_files list."""
+    def _scan_for_new_files(self, workspace_path: str, known_files: set) -> list:
+        """Scan workspace for files not in known_files set."""
         new_files = []
         try:
             for root, dirs, files in os.walk(workspace_path):
@@ -315,6 +353,20 @@ class CoworkingAgent:
         except Exception:
             pass
         return new_files
+
+    def _list_all_files(self, workspace_path: str) -> list:
+        """List all non-hidden files in workspace as relative paths."""
+        all_files = []
+        try:
+            for root, dirs, files in os.walk(workspace_path):
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for f in files:
+                    if not f.startswith('.'):
+                        rel_path = os.path.relpath(os.path.join(root, f), workspace_path)
+                        all_files.append(rel_path)
+        except Exception:
+            pass
+        return all_files
 
     async def invoke(
         self,

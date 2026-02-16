@@ -2131,6 +2131,15 @@ body {
     margin: 0;
 }
 
+.tool-detail-content code.hljs {
+    background: transparent;
+    padding: 0;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* Tool Spinner */
 .tool-spinner {
     display: inline-block;

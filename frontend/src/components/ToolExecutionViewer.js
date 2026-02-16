@@ -25,6 +25,18 @@ export class ToolExecutionViewer {
         this.render();
     }
 
+    clearForNewMessage() {
+        this.planSteps = [];
+        this.toolCalls = [];
+        // Keep generatedFiles across messages
+        this.render();
+    }
+
+    setGeneratedFiles(files) {
+        this.generatedFiles = files.map(f => ({ path: f.path, size: f.size }));
+        this.render();
+    }
+
     setWorkspacePath(path) {
         this.workspacePath = path;
     }
@@ -107,12 +119,12 @@ export class ToolExecutionViewer {
                     <div class="tool-card-body" id="toolBody${idx}" style="display: none;">
                         <div class="tool-detail">
                             <div class="tool-detail-label">Input:</div>
-                            <pre class="tool-detail-content">${this.escapeHtml(this.formatToolInput(tc.input))}</pre>
+                            ${this.renderToolInput(tc)}
                         </div>
                         ${tc.output !== null ? `
                         <div class="tool-detail">
                             <div class="tool-detail-label">Output:</div>
-                            <pre class="tool-detail-content">${this.escapeHtml(tc.output)}</pre>
+                            ${this.renderCodeBlock(tc.output, 'plaintext')}
                         </div>` : ''}
                     </div>
                 </div>`;
@@ -200,6 +212,30 @@ export class ToolExecutionViewer {
         if (bytes < 1024) return `${bytes}B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
         return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+    }
+
+    renderToolInput(tc) {
+        const input = tc.input;
+        if (tc.name === 'python_execute' && input && typeof input === 'object' && input.code) {
+            return this.renderCodeBlock(input.code, 'python');
+        }
+        if (tc.name === 'bash_execute' && input && typeof input === 'object' && input.command) {
+            return this.renderCodeBlock(input.command, 'bash');
+        }
+        return `<pre class="tool-detail-content">${this.escapeHtml(this.formatToolInput(input))}</pre>`;
+    }
+
+    renderCodeBlock(code, language) {
+        if (!code) return '<pre class="tool-detail-content"><code></code></pre>';
+        try {
+            if (typeof hljs !== 'undefined' && language && language !== 'plaintext') {
+                const highlighted = hljs.highlight(code, { language }).value;
+                return `<pre class="tool-detail-content"><code class="hljs language-${language}">${highlighted}</code></pre>`;
+            }
+        } catch (e) {
+            // fallback to escaped
+        }
+        return `<pre class="tool-detail-content"><code>${this.escapeHtml(code)}</code></pre>`;
     }
 
     escapeHtml(str) {
