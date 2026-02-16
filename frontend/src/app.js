@@ -889,6 +889,34 @@ export class ChatApp {
                 this.messageComponent.collapseThinkingBlocks(typingIndicator);
             }
 
+            // Extract and apply citation metadata from the stream
+            const citationMatch = fullResponse.match(/<!--CITATIONS_JSON(.+?)CITATIONS_JSON-->/s);
+            if (citationMatch) {
+                try {
+                    const citations = JSON.parse(citationMatch[1]);
+                    // Strip the metadata from the stored response
+                    fullResponse = fullResponse.replace(/\n?\n?<!--CITATIONS_JSON.+?CITATIONS_JSON-->/s, '');
+                    const msgId = typingIndicator.dataset.messageId;
+                    if (msgId) {
+                        this.messageComponent.messageContents.set(msgId, fullResponse);
+                    }
+                    // Re-render without the metadata
+                    if (fullResponse.includes('<think')) {
+                        this.messageComponent.updateMessageWithThinking(
+                            typingIndicator, fullResponse, this.isMarkdownEnabled
+                        );
+                    } else {
+                        this.messageComponent.updateMessage(
+                            typingIndicator, fullResponse, this.isMarkdownEnabled
+                        );
+                    }
+                    // Apply interactive citation markers
+                    this.messageComponent.applyCitations(typingIndicator, citations);
+                } catch (e) {
+                    console.warn('Failed to parse citation metadata:', e);
+                }
+            }
+
             // Refresh the sidebar to update the conversation title and timestamp
             await this.sidebar.loadConversations();
             this.sidebar.setCurrentConversation(this.conversationId);
@@ -1121,6 +1149,7 @@ export class ChatApp {
 
         try {
             let fullResponse = '';
+            let coworkingCitations = null;
 
             await this.apiClient.streamCoworkingChat(
                 message,
@@ -1188,13 +1217,19 @@ export class ChatApp {
                             );
                         }
                     },
+                    onCitations: (citations) => {
+                        coworkingCitations = citations;
+                    },
                     onDone: (finalAnswer, generatedFiles) => {
                         this.messageComponent.removeTypingIndicator(typingIndicator);
                         if (finalAnswer) {
-                            this.messageComponent.addAssistantMessage(
+                            const messageEl = this.messageComponent.addAssistantMessage(
                                 finalAnswer,
                                 this.isMarkdownEnabled
                             );
+                            if (coworkingCitations && messageEl) {
+                                this.messageComponent.applyCitations(messageEl, coworkingCitations);
+                            }
                         }
                     },
                     onError: (error) => {

@@ -16,6 +16,10 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Tool
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
+from backend.utils.citation import (
+    CITATION_SYSTEM_INSTRUCTION,
+    extract_citations_from_result,
+)
 from backend.tools.workspace_tools import create_workspace_tools
 from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
@@ -124,6 +128,8 @@ class CoworkingAgent:
 
         # Build message list: system + history + current question
         chat_messages = [system_message]
+        if web_search:
+            chat_messages.append(SystemMessage(content=CITATION_SYSTEM_INSTRUCTION))
         for msg in history:
             if msg["role"] == "user":
                 chat_messages.append(HumanMessage(content=msg["content"]))
@@ -138,6 +144,7 @@ class CoworkingAgent:
         iteration = 0
         generated_files = list(conversation_generated_files)
         final_response = ""
+        citations = []
 
         # Emit previous_files event so frontend can restore the file list
         if conversation_generated_files:
@@ -296,6 +303,10 @@ class CoworkingAgent:
                     )
                     chat_messages.append(tool_message)
 
+                    # Extract citations from search tool results
+                    if "search" in tool_name.lower():
+                        extract_citations_from_result(str(result), citations)
+
                 # Continue the ReAct loop (agent will process tool results)
 
             else:
@@ -325,6 +336,10 @@ class CoworkingAgent:
 
             # Only emit newly generated files (exclude those from previous messages)
             new_generated_files = [f for f in generated_files if f not in conversation_generated_files]
+
+            # Emit citations if any were collected
+            if citations:
+                yield {"type": "citations", "citations": citations}
 
             yield {
                 "type": "done",

@@ -15,6 +15,8 @@ export class MessageComponent {
         this.messageContents = new Map();
         // Store response-only content (without thinking) for copy button
         this.messageResponseContents = new Map();
+        // Store citations per message for re-rendering support
+        this.messageCitations = new Map();
         // Current conversation ID for debate message persistence
         this.conversationId = null;
     }
@@ -101,6 +103,14 @@ export class MessageComponent {
 
             // Safety net: strip any remaining thinking tags
             raw = ThinkParser.stripThinking(raw);
+
+            // Strip citation metadata delimiter
+            raw = raw.replace(/\n?\n?<!--CITATIONS_JSON.+?CITATIONS_JSON-->/s, '');
+
+            // Strip [N] citation markers if this message has citations
+            if (this.messageCitations.has(msgId)) {
+                raw = raw.replace(/\s*\[\d+\]/g, '');
+            }
 
             const success = await copyToClipboard(purifyContent(raw));
             if (success) {
@@ -387,6 +397,7 @@ export class MessageComponent {
         this.container.innerHTML = '';
         this.messageContents.clear();
         this.messageResponseContents.clear();
+        this.messageCitations.clear();
     }
 
     /**
@@ -431,8 +442,172 @@ export class MessageComponent {
                         }
                     }
                 }
+
+                // Re-apply citations if this message had them
+                if (this.messageCitations.has(msgId)) {
+                    this.applyCitations(messageEl, this.messageCitations.get(msgId));
+                }
             }
         });
+    }
+
+    /**
+     * Apply interactive citation markers to a rendered message.
+     * Replaces [N] text with clickable <sup> elements that show tooltips.
+     * @param {HTMLElement} messageEl - The message element
+     * @param {Array} citations - Array of {index, url, title} objects
+     */
+    applyCitations(messageEl, citations) {
+        if (!citations || citations.length === 0) return;
+
+        const msgId = messageEl.dataset.messageId;
+        if (msgId) {
+            this.messageCitations.set(msgId, citations);
+        }
+
+        // Build lookup: index -> citation
+        const citationMap = {};
+        for (const c of citations) {
+            citationMap[c.index] = c;
+        }
+
+        // Walk text nodes, skip code/pre/copy-btn/thinking blocks
+        const walker = document.createTreeWalker(
+            messageEl,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('pre, code, .message-copy-btn, .thinking-block')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    // Only accept nodes that contain [N] patterns
+                    if (/\[\d+\]/.test(node.textContent)) {
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                    return NodeFilter.FILTER_REJECT;
+                }
+            }
+        );
+
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            textNodes.push(node);
+        }
+
+        // Process each text node (iterate in reverse to avoid offset issues)
+        for (const textNode of textNodes) {
+            const text = textNode.textContent;
+            const regex = /\[(\d+)\]/g;
+            let match;
+            const parts = [];
+            let lastIndex = 0;
+
+            while ((match = regex.exec(text)) !== null) {
+                const citIndex = parseInt(match[1], 10);
+                const citation = citationMap[citIndex];
+
+                if (citation) {
+                    // Text before the match
+                    if (match.index > lastIndex) {
+                        parts.push(document.createTextNode(text.slice(lastIndex, match.index)));
+                    }
+
+                    // Create citation element
+                    const sup = document.createElement('sup');
+                    sup.className = 'citation-ref';
+                    sup.dataset.index = citIndex;
+                    sup.textContent = citIndex;
+
+                    // Click opens URL
+                    sup.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        window.open(citation.url, '_blank', 'noopener,noreferrer');
+                    });
+
+                    // Hover shows tooltip
+                    sup.addEventListener('mouseenter', (e) => {
+                        this._showCitationTooltip(sup, citation);
+                    });
+                    sup.addEventListener('mouseleave', () => {
+                        this._hideCitationTooltip();
+                    });
+
+                    parts.push(sup);
+                    lastIndex = match.index + match[0].length;
+                }
+            }
+
+            if (parts.length > 0) {
+                // Remaining text after last match
+                if (lastIndex < text.length) {
+                    parts.push(document.createTextNode(text.slice(lastIndex)));
+                }
+
+                // Replace the text node with the parts
+                const parent = textNode.parentNode;
+                for (const part of parts) {
+                    parent.insertBefore(part, textNode);
+                }
+                parent.removeChild(textNode);
+            }
+        }
+    }
+
+    /**
+     * Show a tooltip above a citation element
+     * @param {HTMLElement} element - The citation <sup> element
+     * @param {Object} citation - Citation data {url, title}
+     */
+    _showCitationTooltip(element, citation) {
+        this._hideCitationTooltip();
+
+        const tooltip = document.createElement('div');
+        tooltip.className = 'citation-tooltip';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'citation-tooltip-title';
+        titleDiv.textContent = citation.title || 'Source';
+        tooltip.appendChild(titleDiv);
+
+        const urlDiv = document.createElement('div');
+        urlDiv.className = 'citation-tooltip-url';
+        urlDiv.textContent = citation.url;
+        tooltip.appendChild(urlDiv);
+
+        document.body.appendChild(tooltip);
+
+        // Position above the element
+        const rect = element.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+
+        let top = rect.top - tooltipRect.height - 8;
+        // If too close to top of viewport, show below instead
+        if (top < 8) {
+            top = rect.bottom + 8;
+        }
+
+        let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+        // Clamp to viewport
+        left = Math.max(8, Math.min(left, window.innerWidth - tooltipRect.width - 8));
+
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+        tooltip.style.opacity = '1';
+
+        this._activeTooltip = tooltip;
+    }
+
+    /**
+     * Hide the active citation tooltip
+     */
+    _hideCitationTooltip() {
+        if (this._activeTooltip) {
+            this._activeTooltip.remove();
+            this._activeTooltip = null;
+        }
     }
 
     /**

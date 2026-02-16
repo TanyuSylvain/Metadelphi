@@ -501,6 +501,9 @@ export class APIClient {
             case 'response_chunk':
                 if (callbacks.onResponseChunk) callbacks.onResponseChunk(event.content);
                 break;
+            case 'citations':
+                if (callbacks.onCitations) callbacks.onCitations(event.citations);
+                break;
             case 'done':
                 if (callbacks.onDone) callbacks.onDone(event.final_answer, event.generated_files);
                 break;

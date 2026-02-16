@@ -7,12 +7,18 @@ import logging
 from typing import TypedDict, Annotated, Optional, List
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
+from backend.utils.citation import (
+    CITATION_SYSTEM_INSTRUCTION,
+    extract_citations_from_result,
+    format_citations_metadata,
+    strip_citations_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +150,8 @@ class LangGraphAgent:
                     yield chunk
             finally:
                 if conversation_id and full_response:
-                    converted_response = TextProcessor.convert_math_delimiters(full_response)
+                    clean_response = strip_citations_metadata(full_response)
+                    converted_response = TextProcessor.convert_math_delimiters(clean_response)
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
@@ -184,6 +191,11 @@ class LangGraphAgent:
         Yields:
             str: Text chunks from the LLM
         """
+        citations = []
+
+        # Prepend citation instruction so the LLM knows to use [N] markers
+        messages.insert(0, SystemMessage(content=CITATION_SYSTEM_INSTRUCTION))
+
         for iteration in range(max_iterations):
             full_content = ""
             tool_calls = []
@@ -212,6 +224,8 @@ class LangGraphAgent:
             if not tool_calls:
                 # No tool calls — final response, done
                 messages.append(AIMessage(content=full_content))
+                if citations:
+                    yield format_citations_metadata(citations)
                 break
 
             # Parse tool calls
@@ -262,6 +276,10 @@ class LangGraphAgent:
                     tool_call_id=tool_call_id
                 )
                 messages.append(tool_message)
+
+                # Extract citations from search tool results
+                if "search" in tool_name.lower():
+                    extract_citations_from_result(str(result), citations)
 
             # Continue loop — LLM will process tool results
 
