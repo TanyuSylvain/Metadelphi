@@ -1629,6 +1629,80 @@ body {
     background: #e9ecef;
 }
 
+/* ========================================
+   Thinking Block Styles (<think> content)
+   ======================================== */
+
+.thinking-block {
+    border: 1px solid #e0e0e0;
+    border-radius: 0.5rem;
+    background: #f8f9fa;
+    margin: 0.5rem 0;
+    overflow: hidden;
+}
+
+.thinking-block:first-child {
+    margin-top: 0;
+}
+
+.thinking-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.thinking-summary::-webkit-details-marker {
+    display: none;
+}
+
+.thinking-arrow {
+    display: inline-block;
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+    color: #999;
+}
+
+.thinking-block[open] .thinking-arrow {
+    transform: rotate(90deg);
+}
+
+.thinking-label {
+    font-style: italic;
+    color: #888;
+}
+
+.thinking-block[open] .thinking-label.streaming {
+    animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.thinking-content {
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: #777;
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid #e0e0e0;
+    max-height: 300px;
+    overflow-y: auto;
+    line-height: 1.5;
+}
+
+.response-content {
+    /* Inherits existing message styles */
+}
+
 /* Issues */
 .issues-list {
     display: flex;

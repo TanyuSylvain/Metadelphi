@@ -5,6 +5,7 @@
 
 import { MarkdownRenderer } from '../utils/markdown.js';
 import { getStorage, setStorage, purifyContent, copyToClipboard } from '../utils/helpers.js';
+import { ThinkParser } from '../utils/thinkParser.js';
 
 export class MessageComponent {
     constructor(messagesContainer) {
@@ -12,6 +13,8 @@ export class MessageComponent {
         this.renderer = new MarkdownRenderer();
         // Store raw content for assistant messages to support re-rendering
         this.messageContents = new Map();
+        // Store response-only content (without thinking) for copy button
+        this.messageResponseContents = new Map();
         // Current conversation ID for debate message persistence
         this.conversationId = null;
     }
@@ -92,8 +95,12 @@ export class MessageComponent {
 
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const raw = this.messageContents.get(msgId);
+            // Prefer response-only content (without thinking), fall back to full content
+            let raw = this.messageResponseContents.get(msgId) || this.messageContents.get(msgId);
             if (!raw) return;
+
+            // Safety net: strip any remaining thinking tags
+            raw = ThinkParser.stripThinking(raw);
 
             const success = await copyToClipboard(purifyContent(raw));
             if (success) {
@@ -258,6 +265,102 @@ export class MessageComponent {
     }
 
     /**
+     * Update message with thinking block support
+     * Parses <think>...</think> blocks and renders them in collapsible sections
+     * @param {HTMLElement} messageEl - Message element
+     * @param {string} fullText - Full accumulated text including think tags
+     * @param {boolean} isMarkdown - Whether to render response as markdown
+     */
+    updateMessageWithThinking(messageEl, fullText, isMarkdown = false) {
+        const msgId = messageEl.dataset.messageId;
+        if (msgId) {
+            this.messageContents.set(msgId, fullText);
+        }
+
+        const { segments, responseOnly } = ThinkParser.parse(fullText);
+
+        if (msgId) {
+            this.messageResponseContents.set(msgId, responseOnly);
+        }
+
+        // Preserve user's open/closed state for existing thinking blocks before rebuilding
+        const existingBlocks = messageEl.querySelectorAll('.thinking-block');
+        const openStates = [];
+        existingBlocks.forEach((block, index) => {
+            openStates[index] = block.hasAttribute('open');
+        });
+
+        // Build HTML from segments
+        let html = '';
+        let thinkingBlockIndex = 0;
+        for (const segment of segments) {
+            if (segment.type === 'thinking') {
+                // Use preserved state if available, otherwise default to open for new blocks during streaming
+                const shouldBeOpen = openStates[thinkingBlockIndex] !== undefined
+                    ? openStates[thinkingBlockIndex]
+                    : true; // New blocks default to open
+                const openAttr = shouldBeOpen ? ' open' : '';
+                const streamingClass = segment.complete ? '' : ' streaming';
+                const label = segment.complete ? 'Thinking (complete)' : 'Thinking...';
+                html += `<details class="thinking-block"${openAttr}>`;
+                html += `<summary class="thinking-summary">`;
+                html += `<span class="thinking-arrow">&#9654;</span>`;
+                html += `<span class="thinking-label${streamingClass}">${label}</span>`;
+                html += `</summary>`;
+                html += `<div class="thinking-content">${this._escapeHtml(segment.content)}</div>`;
+                html += `</details>`;
+                thinkingBlockIndex++;
+            } else if (segment.type === 'response') {
+                if (isMarkdown) {
+                    html += `<div class="response-content">${this.renderer.render(segment.content)}</div>`;
+                } else {
+                    html += `<div class="response-content" style="white-space: pre-wrap;">${this._escapeHtml(segment.content)}</div>`;
+                }
+            }
+        }
+
+        messageEl.innerHTML = html;
+
+        // Re-add copy button
+        if (fullText && msgId) {
+            messageEl.appendChild(this.createCopyButton(msgId));
+        }
+
+        this.scrollToBottom();
+    }
+
+    /**
+     * Collapse all thinking blocks in a message (close all <details> elements)
+     * @param {HTMLElement} messageEl - Message element
+     */
+    collapseThinkingBlocks(messageEl) {
+        const thinkingBlocks = messageEl.querySelectorAll('.thinking-block[open]');
+        thinkingBlocks.forEach(block => {
+            block.removeAttribute('open');
+        });
+    }
+
+    /**
+     * Check if content contains thinking tags
+     * @param {string} content - Message content
+     * @returns {boolean}
+     */
+    hasThinkingContent(content) {
+        return content && content.includes('<think>');
+    }
+
+    /**
+     * Escape HTML entities for safe insertion
+     * @param {string} text - Raw text
+     * @returns {string} Escaped HTML
+     */
+    _escapeHtml(text) {
+        const el = document.createElement('div');
+        el.textContent = text;
+        return el.innerHTML;
+    }
+
+    /**
      * Show typing indicator
      * @returns {HTMLElement} Typing indicator element
      */
@@ -283,6 +386,7 @@ export class MessageComponent {
     clearMessages() {
         this.container.innerHTML = '';
         this.messageContents.clear();
+        this.messageResponseContents.clear();
     }
 
     /**
@@ -310,16 +414,21 @@ export class MessageComponent {
                     }
                 } else {
                     // Regular assistant message - innerHTML wipes copy button, so re-add it
-                    if (isMarkdown) {
-                        messageEl.style.whiteSpace = '';
-                        messageEl.innerHTML = this.renderer.render(content);
+                    if (this.hasThinkingContent(content)) {
+                        // Re-render with thinking block support (adds its own copy button)
+                        this.updateMessageWithThinking(messageEl, content, isMarkdown);
                     } else {
-                        messageEl.style.whiteSpace = 'pre-wrap';
-                        messageEl.textContent = content;
-                    }
-                    // Re-add copy button after innerHTML replacement
-                    if (content) {
-                        messageEl.appendChild(this.createCopyButton(msgId));
+                        if (isMarkdown) {
+                            messageEl.style.whiteSpace = '';
+                            messageEl.innerHTML = this.renderer.render(content);
+                        } else {
+                            messageEl.style.whiteSpace = 'pre-wrap';
+                            messageEl.textContent = content;
+                        }
+                        // Re-add copy button after innerHTML replacement
+                        if (content) {
+                            messageEl.appendChild(this.createCopyButton(msgId));
+                        }
                     }
                 }
             }
@@ -373,6 +482,12 @@ export class MessageComponent {
                         debateMetadata.iteration,
                         isMarkdown
                     );
+                } else if (this.hasThinkingContent(msg.content)) {
+                    // Message contains <think> blocks - render with collapsible thinking
+                    const messageEl = this.addMessage('', 'assistant');
+                    const msgId = Date.now().toString() + Math.random().toString();
+                    messageEl.dataset.messageId = msgId;
+                    this.updateMessageWithThinking(messageEl, msg.content, isMarkdown);
                 } else {
                     this.addAssistantMessage(msg.content);
                 }

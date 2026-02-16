@@ -866,15 +866,28 @@ export class ChatApp {
                 (chunk) => {
                     // Accumulate response
                     fullResponse += chunk;
-                    this.messageComponent.updateMessage(
-                        typingIndicator,
-                        fullResponse,
-                        this.isMarkdownEnabled
-                    );
+                    if (fullResponse.includes('<think')) {
+                        this.messageComponent.updateMessageWithThinking(
+                            typingIndicator,
+                            fullResponse,
+                            this.isMarkdownEnabled
+                        );
+                    } else {
+                        this.messageComponent.updateMessage(
+                            typingIndicator,
+                            fullResponse,
+                            this.isMarkdownEnabled
+                        );
+                    }
                 },
                 this.isThinkingEnabled,
                 this.isWebSearchEnabled
             );
+
+            // Collapse all thinking blocks now that streaming is complete
+            if (fullResponse.includes('<think')) {
+                this.messageComponent.collapseThinkingBlocks(typingIndicator);
+            }
 
             // Refresh the sidebar to update the conversation title and timestamp
             await this.sidebar.loadConversations();
@@ -1125,11 +1138,19 @@ export class ChatApp {
                     },
                     onThinkingChunk: (content) => {
                         fullResponse += content;
-                        this.messageComponent.updateMessage(
-                            typingIndicator,
-                            fullResponse,
-                            this.isMarkdownEnabled
-                        );
+                        if (fullResponse.includes('<think')) {
+                            this.messageComponent.updateMessageWithThinking(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        } else {
+                            this.messageComponent.updateMessage(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        }
                     },
                     onToolStart: (toolName, toolInput) => {
                         if (this.toolExecutionViewer) {
@@ -1148,11 +1169,19 @@ export class ChatApp {
                     },
                     onResponseChunk: (content) => {
                         fullResponse += content;
-                        this.messageComponent.updateMessage(
-                            typingIndicator,
-                            fullResponse,
-                            this.isMarkdownEnabled
-                        );
+                        if (fullResponse.includes('<think')) {
+                            this.messageComponent.updateMessageWithThinking(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        } else {
+                            this.messageComponent.updateMessage(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        }
                     },
                     onDone: (finalAnswer, generatedFiles) => {
                         this.messageComponent.removeTypingIndicator(typingIndicator);
@@ -1170,6 +1199,11 @@ export class ChatApp {
                     }
                 }
             );
+
+            // Collapse all thinking blocks now that streaming is complete
+            if (fullResponse.includes('<think')) {
+                this.messageComponent.collapseThinkingBlocks(typingIndicator);
+            }
 
             // Refresh sidebar
             await this.sidebar.loadConversations();
