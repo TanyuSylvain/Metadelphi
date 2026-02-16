@@ -14,6 +14,13 @@ class GLMProvider(BaseLLMProvider):
         """Return available GLM models."""
         return [
             {
+                "id": "glm-5",
+                "name": "GLM 5",
+                "description": "Latest front-tier GLM model",
+                "supports_thinking": True,
+                "thinking_locked": False
+            },
+            {
                 "id": "glm-4.7",
                 "name": "GLM 4.7",
                 "description": "Enhanced GLM-4 with improved capabilities",

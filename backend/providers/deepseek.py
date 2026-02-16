@@ -17,13 +17,13 @@ class DeepSeekProvider(BaseLLMProvider):
         return [
             {
                 "id": "deepseek-chat",
-                "name": "DeepSeek Chat (V3.2)",
+                "name": "DeepSeek Chat (Latest)",
                 "description": "DeepSeek's conversational model",
                 "supports_thinking": False
             },
             {
                 "id": "deepseek-reasoner",
-                "name": "DeepSeek Reasoner (V3.2)",
+                "name": "DeepSeek Reasoner (Latest)",
                 "description": "Advanced reasoning model with chain-of-thought",
                 "supports_thinking": True,
                 "thinking_locked": True  # Cannot disable thinking

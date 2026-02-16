@@ -4,8 +4,9 @@
  */
 
 export class ToolExecutionViewer {
-    constructor(containerElement) {
+    constructor(containerElement, apiClient) {
         this.container = containerElement;
+        this.apiClient = apiClient;
         this.planSteps = [];
         this.toolCalls = [];
         this.generatedFiles = [];
@@ -128,8 +129,9 @@ export class ToolExecutionViewer {
                 const downloadUrl = `${this.baseURL}/chat/coworking/files?workspace_path=${encodeURIComponent(this.workspacePath)}&file_path=${encodeURIComponent(file.path)}`;
                 html += `<div class="file-item">
                     <span class="file-icon">&#x1F4C4;</span>
-                    <a class="file-download-link" href="${downloadUrl}" target="_blank">${this.escapeHtml(file.path)}</a>
+                    <span class="file-open-link" data-file-path="${this.escapeHtml(file.path)}">${this.escapeHtml(file.path)}</span>
                     <span class="file-size">(${sizeStr})</span>
+                    <a class="file-download-btn" href="${downloadUrl}" target="_blank" title="Download">&#x2B07;</a>
                 </div>`;
             });
             html += '</div>';
@@ -141,6 +143,7 @@ export class ToolExecutionViewer {
 
         this.container.innerHTML = html;
         this.setupToggleListeners();
+        this.setupFileOpenListeners();
     }
 
     setupToggleListeners() {
@@ -156,6 +159,21 @@ export class ToolExecutionViewer {
                     if (toggle) {
                         toggle.innerHTML = isHidden ? '&#x25B2;' : '&#x25BC;';
                     }
+                }
+            });
+        });
+    }
+
+    setupFileOpenListeners() {
+        const links = this.container.querySelectorAll('.file-open-link');
+        links.forEach(link => {
+            link.addEventListener('click', async () => {
+                const filePath = link.dataset.filePath;
+                if (!filePath || !this.workspacePath || !this.apiClient) return;
+                try {
+                    await this.apiClient.openFile(this.workspacePath, filePath);
+                } catch (error) {
+                    console.error('Failed to open file:', error);
                 }
             });
         });

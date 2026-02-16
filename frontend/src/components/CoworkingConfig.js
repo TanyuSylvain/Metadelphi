@@ -1,11 +1,12 @@
 /**
  * Coworking Configuration Component
- * Provides workspace path input for the coworking agent mode
+ * Provides workspace path selection via native folder picker for the coworking agent mode
  */
 
 export class CoworkingConfig {
-    constructor(containerElement) {
+    constructor(containerElement, apiClient) {
         this.container = containerElement;
+        this.apiClient = apiClient;
         this.workspacePath = localStorage.getItem('coworkingWorkspacePath') || '';
     }
 
@@ -15,32 +16,48 @@ export class CoworkingConfig {
     }
 
     render() {
+        const displayPath = this.workspacePath || 'No workspace selected';
+        const hasPath = !!this.workspacePath;
         this.container.innerHTML = `
             <div class="coworking-config">
                 <div class="coworking-config-row">
-                    <label for="workspacePathInput" class="workspace-label">Workspace:</label>
-                    <input
-                        type="text"
-                        id="workspacePathInput"
-                        class="workspace-input"
-                        placeholder="/path/to/workspace"
-                        value="${this.escapeHtml(this.workspacePath)}"
-                    />
+                    <label class="workspace-label">Workspace:</label>
+                    <span class="workspace-path-display ${hasPath ? '' : 'placeholder'}">${this.escapeHtml(displayPath)}</span>
+                    <button class="workspace-browse-btn" id="workspaceBrowseBtn">Browse</button>
                 </div>
             </div>
         `;
     }
 
     setupEventListeners() {
-        const input = this.container.querySelector('#workspacePathInput');
-        if (input) {
-            input.addEventListener('change', (e) => {
-                this.workspacePath = e.target.value.trim();
+        const browseBtn = this.container.querySelector('#workspaceBrowseBtn');
+        if (browseBtn) {
+            browseBtn.addEventListener('click', () => this.handleBrowse());
+        }
+    }
+
+    async handleBrowse() {
+        const browseBtn = this.container.querySelector('#workspaceBrowseBtn');
+        if (browseBtn) {
+            browseBtn.disabled = true;
+            browseBtn.textContent = '...';
+        }
+
+        try {
+            const path = await this.apiClient.selectWorkspace();
+            if (path) {
+                this.workspacePath = path;
                 localStorage.setItem('coworkingWorkspacePath', this.workspacePath);
-            });
-            input.addEventListener('input', (e) => {
-                this.workspacePath = e.target.value.trim();
-            });
+                this.render();
+                this.setupEventListeners();
+            }
+        } catch (error) {
+            console.error('Error selecting workspace:', error);
+        } finally {
+            if (browseBtn) {
+                browseBtn.disabled = false;
+                browseBtn.textContent = 'Browse';
+            }
         }
     }
 

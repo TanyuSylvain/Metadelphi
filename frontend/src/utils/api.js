@@ -566,6 +566,51 @@ export class APIClient {
     }
 
     /**
+     * Open a native macOS folder picker and return the selected path.
+     * @returns {Promise<string|null>} Selected path or null if cancelled
+     */
+    async selectWorkspace() {
+        try {
+            const response = await fetch(`${this.baseURL}/chat/coworking/select-workspace`);
+            if (!response.ok) {
+                throw new Error(`Failed to select workspace: ${response.statusText}`);
+            }
+            const data = await response.json();
+            return data.path || null;
+        } catch (error) {
+            console.error('Error selecting workspace:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Open a file from the workspace with the default application.
+     * @param {string} workspacePath - Workspace directory path
+     * @param {string} filePath - File path relative to workspace
+     * @returns {Promise<Object>} Result object
+     */
+    async openFile(workspacePath, filePath) {
+        try {
+            const response = await fetch(`${this.baseURL}/chat/coworking/open-file`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workspace_path: workspacePath,
+                    file_path: filePath
+                })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to open file');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error opening file:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Switch conversation mode between simple and debate
      * @param {string} conversationId - Conversation ID
      * @param {string} targetMode - Target mode ('simple' or 'debate')

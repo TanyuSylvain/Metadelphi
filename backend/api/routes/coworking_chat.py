@@ -8,10 +8,12 @@ file operations, and code execution within a workspace.
 import os
 import json
 import uuid
+import asyncio
+import subprocess
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse
 
-from backend.api.schemas import CoworkingChatRequest
+from backend.api.schemas import CoworkingChatRequest, OpenFileRequest
 from backend.core.coworking_agent import CoworkingAgent
 from backend.tools.workspace_tools import resolve_in_workspace
 from backend.storage import get_storage
@@ -142,3 +144,61 @@ async def download_file(
         path=resolved,
         filename=os.path.basename(resolved)
     )
+
+
+@router.get("/select-workspace")
+async def select_workspace():
+    """
+    Open a native macOS folder picker dialog and return the selected path.
+
+    Returns:
+        {"path": "/selected/path"} on success, {"path": null} if cancelled
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e",
+            'POSIX path of (choose folder with prompt "Select workspace folder")',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+        if proc.returncode != 0:
+            # User cancelled or error
+            return {"path": None}
+
+        path = stdout.decode().strip().rstrip("/")
+        if path and os.path.isdir(path):
+            return {"path": path}
+        return {"path": None}
+
+    except asyncio.TimeoutError:
+        return {"path": None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/open-file")
+async def open_file(request: OpenFileRequest):
+    """
+    Open a file from the workspace with the default macOS application.
+
+    Args:
+        request: OpenFileRequest with workspace_path and file_path
+    """
+    try:
+        resolved = resolve_in_workspace(request.workspace_path, request.file_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not os.path.exists(resolved):
+        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+
+    if not os.path.isfile(resolved):
+        raise HTTPException(status_code=400, detail=f"Not a file: {request.file_path}")
+
+    try:
+        subprocess.Popen(["open", resolved])
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")

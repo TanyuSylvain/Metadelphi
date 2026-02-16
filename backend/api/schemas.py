@@ -241,6 +241,12 @@ class MultiAgentChatResponse(BaseModel):
 # Coworking Agent Schemas
 # =============================================================================
 
+class OpenFileRequest(BaseModel):
+    """Request model for opening a file with the native application."""
+    workspace_path: str = Field(..., description="Absolute path to workspace directory")
+    file_path: str = Field(..., description="File path relative to workspace")
+
+
 class CoworkingChatRequest(BaseModel):
     """Request model for coworking agent chat endpoints."""
     message: str = Field(..., description="User's message", min_length=1)

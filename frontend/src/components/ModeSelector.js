@@ -120,6 +120,26 @@ export class ModeSelector {
     }
 
     /**
+     * Set mode silently without triggering the onChange callback.
+     * Used to revert the UI when a mode switch fails.
+     * @param {string} mode - 'simple', 'multi-agent', or 'coworking'
+     */
+    setModeSilent(mode) {
+        if (mode !== 'simple' && mode !== 'multi-agent' && mode !== 'coworking') {
+            return;
+        }
+
+        this.currentMode = mode;
+        localStorage.setItem('chatMode', mode);
+
+        // Update UI
+        const buttons = this.container.querySelectorAll('.mode-btn');
+        buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+    }
+
+    /**
      * Register callback for mode changes
      * @param {Function} callback - Callback function(mode)
      */

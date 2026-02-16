@@ -14,8 +14,8 @@ class MiniMaxProvider(BaseLLMProvider):
         """Return available MiniMax models."""
         return [
             {
-                "id": "MiniMax-M2.1",
-                "name": "MiniMax-M2.1",
+                "id": "MiniMax-M2.5",
+                "name": "MiniMax-M2.5",
                 "description": "Latest generation model with superior performance",
                 "supports_thinking": True,
                 "thinking_locked": True

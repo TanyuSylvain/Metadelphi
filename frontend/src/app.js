@@ -95,13 +95,13 @@ export class ChatApp {
         this.coworkingConfigElement = document.getElementById('coworkingConfig');
         this.coworkingConfig = null;
         if (this.coworkingConfigElement) {
-            this.coworkingConfig = new CoworkingConfig(this.coworkingConfigElement);
+            this.coworkingConfig = new CoworkingConfig(this.coworkingConfigElement, this.apiClient);
         }
 
         this.toolExecutionViewerElement = document.getElementById('toolExecutionViewer');
         this.toolExecutionViewer = null;
         if (this.toolExecutionViewerElement) {
-            this.toolExecutionViewer = new ToolExecutionViewer(this.toolExecutionViewerElement);
+            this.toolExecutionViewer = new ToolExecutionViewer(this.toolExecutionViewerElement, this.apiClient);
         }
 
         // Conversation state
@@ -669,7 +669,7 @@ export class ChatApp {
             console.error('Error updating debate toggle visibility:', error);
         }
 
-        // Auto-hide debate panel when not in debate mode
+        // Manage debate panel visibility based on mode
         if (!this.isMultiAgentMode) {
             try {
                 this.hideDebatePanel();
@@ -683,6 +683,13 @@ export class ChatApp {
             // Hide moderator status indicator
             if (this.moderatorStatusIndicator) {
                 this.moderatorStatusIndicator.hide();
+            }
+        } else if (this.debatePanelToggleOn) {
+            // Re-show debate panel when entering debate mode if toggle is on
+            try {
+                this.showDebatePanel();
+            } catch (error) {
+                console.error('Error showing debate panel:', error);
             }
         }
 
@@ -1247,6 +1254,8 @@ export class ChatApp {
                 this.isMultiAgentMode = wasMultiAgent;
                 this.isCoworkingMode = wasCoworking;
                 this.updateMultiAgentUIVisibility();
+                const revertMode = wasMultiAgent ? 'multi-agent' : (wasCoworking ? 'coworking' : 'simple');
+                this.modeSelector.setModeSilent(revertMode);
             }
         } catch (error) {
             console.error('[ModeSwitch] Error switching mode:', error);
@@ -1290,6 +1299,8 @@ export class ChatApp {
             this.isMultiAgentMode = wasMultiAgent;
             this.isCoworkingMode = wasCoworking;
             this.updateMultiAgentUIVisibility();
+            const revertMode = wasMultiAgent ? 'multi-agent' : (wasCoworking ? 'coworking' : 'simple');
+            this.modeSelector.setModeSilent(revertMode);
         }
     }
 

@@ -1834,21 +1834,48 @@ body {
     white-space: nowrap;
 }
 
-.workspace-input {
+.workspace-path-display {
     flex: 1;
     padding: 6px 10px;
-    border: 1px solid #ccc;
+    border: 1px solid #e0e0e0;
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-family: 'SF Mono', 'Fira Code', monospace;
-    background: #fff;
-    transition: border-color 0.2s;
+    background: #f8f9fa;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
-.workspace-input:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+.workspace-path-display.placeholder {
+    color: #999;
+    font-style: italic;
+    font-family: inherit;
+}
+
+.workspace-browse-btn {
+    padding: 5px 14px;
+    border: 1px solid #667eea;
+    border-radius: 6px;
+    background: #667eea;
+    color: white;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.workspace-browse-btn:hover {
+    background: #5a6fd6;
+    border-color: #5a6fd6;
+}
+
+.workspace-browse-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* Coworking Panel (Right Side) */
@@ -2051,15 +2078,37 @@ body {
     flex-shrink: 0;
 }
 
-.file-download-link {
+.file-open-link {
     color: #667eea;
-    text-decoration: none;
     font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 0.82rem;
+    cursor: pointer;
+    transition: color 0.2s;
 }
 
-.file-download-link:hover {
+.file-open-link:hover {
+    color: #5a6fd6;
     text-decoration: underline;
+}
+
+.file-download-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    color: #999;
+    text-decoration: none;
+    font-size: 0.75rem;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.file-download-btn:hover {
+    background: #e9ecef;
+    color: #667eea;
 }
 
 .file-size {

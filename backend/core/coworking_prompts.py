@@ -25,8 +25,8 @@ You have the following tools:
 2. **Use tools methodically**: Execute one logical step at a time. Check outputs before proceeding.
 3. **Document generation**: For PDF, DOCX, XLSX files:
    - First install the needed library (e.g., `fpdf2`, `python-docx`, `openpyxl`)
-   - Then write a Python script to the workspace
-   - Then execute the script via `python_execute`
+   - Then pass the generation code directly to `python_execute`
+   - The `python_execute` tool runs code in a subprocess with cwd=workspace, so generated files will appear in the workspace automatically
 4. **Error handling**: If a tool call fails, read the error message and try an alternative approach.
 5. **Report results**: After completing the task, summarize what was done and list any files created.
 6. **File paths**: Always use paths relative to the workspace root.

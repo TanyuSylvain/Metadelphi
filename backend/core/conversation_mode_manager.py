@@ -85,21 +85,22 @@ class ConversationModeManager:
                     "last_iteration": 0
                 }
 
-            message = "Switched to debate mode. Previous conversation context prepared."
+            message = "Previous conversation context prepared."
 
         elif target_mode == "coworking":
             # Switching to coworking mode
-            message = "Switched to coworking mode."
+            message = ""
 
         else:
             # Switching to simple mode
             # Clear debate-specific metadata
+            has_debate_config = "model_config" in metadata
             metadata.pop("model_config", None)
             # Keep debate_state for history but mark as inactive
             if "debate_state" in metadata:
                 metadata["debate_state"]["active"] = False
 
-            message = "Switched to simple mode. Debate configuration cleared."
+            message = "Debate configuration cleared." if has_debate_config else ""
 
         # Update conversation
         await self.update_conversation_mode(
