@@ -84,7 +84,7 @@ export class APIClient {
      * @param {boolean} thinking - Enable thinking mode
      * @returns {Promise<void>}
      */
-    async streamMessage(message, conversationId, modelId, onChunk, thinking = false) {
+    async streamMessage(message, conversationId, modelId, onChunk, thinking = false, webSearch = false) {
         try {
             const body = {
                 message,
@@ -93,6 +93,9 @@ export class APIClient {
             };
             if (thinking !== null && thinking !== undefined) {
                 body.thinking = thinking;
+            }
+            if (webSearch) {
+                body.web_search = true;
             }
 
             const response = await fetch(`${this.baseURL}/chat/stream`, {
@@ -402,7 +405,7 @@ export class APIClient {
      * @param {Object} callbacks - Event callbacks
      * @returns {Promise<void>}
      */
-    async streamCoworkingChat(message, conversationId, modelId, workspacePath, thinking, maxIterations, callbacks) {
+    async streamCoworkingChat(message, conversationId, modelId, workspacePath, thinking, maxIterations, webSearch, callbacks) {
         try {
             const body = {
                 message,
@@ -412,6 +415,9 @@ export class APIClient {
                 thinking: thinking || false,
                 max_iterations: maxIterations || 25
             };
+            if (webSearch) {
+                body.web_search = true;
+            }
 
             const response = await fetch(`${this.baseURL}/chat/coworking/stream`, {
                 method: 'POST',

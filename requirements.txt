@@ -10,6 +10,7 @@ langchain-mistralai==1.1.1
 langchain-openai==1.1.7
 langgraph==1.0.5
 langgraph-prebuilt==1.0.5
+langchain-mcp-adapters>=0.1.0
 
 # Data Validation
 pydantic>=2.10.0

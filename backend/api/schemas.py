@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Optional conversation ID for multi-turn chat")
     model: Optional[str] = Field(None, description="Model ID to use (e.g., 'mistral-large-latest')")
     thinking: Optional[bool] = Field(None, description="Enable thinking mode for models that support it")
+    web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
 
     class Config:
         json_schema_extra = {
@@ -19,7 +20,8 @@ class ChatRequest(BaseModel):
                 "message": "What is machine learning?",
                 "conversation_id": "conv-123",
                 "model": "mistral-large-latest",
-                "thinking": False
+                "thinking": False,
+                "web_search": False
             }
         }
 
@@ -254,6 +256,7 @@ class CoworkingChatRequest(BaseModel):
     model: Optional[str] = Field(None, description="Model ID to use")
     workspace_path: str = Field(..., description="Absolute path to workspace directory")
     thinking: Optional[bool] = Field(False, description="Enable thinking mode")
+    web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
     max_iterations: int = Field(default=25, ge=1, le=50, description="Maximum ReAct loop iterations")
 
     class Config:

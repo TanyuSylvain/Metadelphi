@@ -93,7 +93,8 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
                 question=request.message,
                 conversation_id=conversation_id,
                 workspace_path=workspace_path,
-                max_iterations=request.max_iterations
+                max_iterations=request.max_iterations,
+                web_search=request.web_search or False
             ):
                 event_data = json.dumps(event, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"

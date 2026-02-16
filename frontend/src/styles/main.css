@@ -366,6 +366,13 @@ body {
     gap: 0.5rem;
 }
 
+/* Web Search Toggle */
+.web-search-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .toggle-label {
     font-size: 0.9rem;
     color: #aaa;

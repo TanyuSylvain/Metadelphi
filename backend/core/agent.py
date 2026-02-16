@@ -2,13 +2,19 @@
 Core LangGraph agent implementation with provider and storage abstractions.
 """
 
-from typing import TypedDict, Annotated, Optional
+import json
+import logging
+from typing import TypedDict, Annotated, Optional, List
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import BaseTool
 
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
+
+logger = logging.getLogger(__name__)
 
 
 class AgentState(TypedDict):
@@ -25,7 +31,8 @@ class LangGraphAgent:
         provider_name: Optional[str] = None,
         storage: Optional[ConversationStorage] = None,
         temperature: float = None,
-        thinking: bool = False
+        thinking: bool = False,
+        tools: Optional[List[BaseTool]] = None
     ):
         """
         Initialize the agent with specified model and storage.
@@ -36,10 +43,12 @@ class LangGraphAgent:
             storage: Storage backend (defaults to MemoryStorage)
             temperature: Sampling temperature (defaults to config setting)
             thinking: Enable thinking mode for models that support it
+            tools: Optional list of tools to bind (enables ReAct loop)
         """
         self.model_id = model_id
         self.provider_name = provider_name
         self.thinking = thinking
+        self.tools = tools or []
 
         # Initialize LLM using factory
         self.llm = ProviderFactory.create_llm(
@@ -49,10 +58,18 @@ class LangGraphAgent:
             thinking=thinking
         )
 
+        # Bind tools if provided
+        if self.tools:
+            self.llm_with_tools = self.llm.bind_tools(self.tools)
+            self.tool_map = {t.name: t for t in self.tools}
+        else:
+            self.llm_with_tools = None
+            self.tool_map = {}
+
         # Initialize storage
         self.storage = storage or MemoryStorage()
 
-        # Build the LangGraph workflow
+        # Build the LangGraph workflow (only used for non-tool path)
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -79,6 +96,10 @@ class LangGraphAgent:
     async def stream(self, question: str, conversation_id: str = None):
         """
         Stream the response to a user question.
+
+        When tools are bound, runs a ReAct loop:
+        stream LLM → check for tool calls → execute tools → loop.
+        When no tools, streams directly from LLM.
 
         Args:
             question: The user's question
@@ -114,29 +135,132 @@ class LangGraphAgent:
         messages = history.copy()
         messages.append({"role": "user", "content": question})
 
-        # Stream the response using async streaming
-        full_response = ""
-        try:
-            async for chunk in self.llm.astream(messages):
-                if hasattr(chunk, 'content'):
-                    content = chunk.content
-                    if content:
-                        # Extract text from content (handles both string and list formats)
-                        text_content = TextProcessor.extract_text_content(content)
-                        if text_content:
-                            full_response += text_content
-                            yield text_content
-        finally:
-            # ALWAYS save the response, even if streaming was interrupted
-            if conversation_id and full_response:
-                # Convert math delimiters before storing
-                converted_response = TextProcessor.convert_math_delimiters(full_response)
-                await self.storage.add_message(
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=converted_response,
-                    model=self.model_id
+        # Choose path: with tools (ReAct loop) or without (simple streaming)
+        if self.llm_with_tools and self.tools:
+            full_response = ""
+            try:
+                async for chunk in self._stream_with_tools(messages):
+                    full_response += chunk
+                    yield chunk
+            finally:
+                if conversation_id and full_response:
+                    converted_response = TextProcessor.convert_math_delimiters(full_response)
+                    await self.storage.add_message(
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=converted_response,
+                        model=self.model_id
+                    )
+        else:
+            # Original simple streaming path
+            full_response = ""
+            try:
+                async for chunk in self.llm.astream(messages):
+                    if hasattr(chunk, 'content'):
+                        content = chunk.content
+                        if content:
+                            text_content = TextProcessor.extract_text_content(content)
+                            if text_content:
+                                full_response += text_content
+                                yield text_content
+            finally:
+                if conversation_id and full_response:
+                    converted_response = TextProcessor.convert_math_delimiters(full_response)
+                    await self.storage.add_message(
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=converted_response,
+                        model=self.model_id
+                    )
+
+    async def _stream_with_tools(self, messages: list, max_iterations: int = 10):
+        """
+        ReAct loop: stream LLM with tools, execute tool calls, repeat.
+
+        Args:
+            messages: Chat message list (mutated in-place)
+            max_iterations: Safety limit for tool call rounds
+
+        Yields:
+            str: Text chunks from the LLM
+        """
+        for iteration in range(max_iterations):
+            full_content = ""
+            tool_calls = []
+
+            async for chunk in self.llm_with_tools.astream(messages):
+                # Accumulate text content
+                if hasattr(chunk, 'content') and chunk.content:
+                    text = TextProcessor.extract_text_content(chunk.content)
+                    if text:
+                        full_content += text
+                        yield text
+
+                # Accumulate tool call chunks
+                if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
+                    for tc_chunk in chunk.tool_call_chunks:
+                        tc_idx = tc_chunk.get("index", 0)
+                        while len(tool_calls) <= tc_idx:
+                            tool_calls.append({"id": "", "name": "", "args": ""})
+                        if tc_chunk.get("id"):
+                            tool_calls[tc_idx]["id"] = tc_chunk["id"]
+                        if tc_chunk.get("name"):
+                            tool_calls[tc_idx]["name"] = tc_chunk["name"]
+                        if tc_chunk.get("args"):
+                            tool_calls[tc_idx]["args"] += tc_chunk["args"]
+
+            if not tool_calls:
+                # No tool calls — final response, done
+                messages.append(AIMessage(content=full_content))
+                break
+
+            # Parse tool calls
+            parsed_tool_calls = []
+            for tc in tool_calls:
+                if tc["name"]:
+                    try:
+                        args = json.loads(tc["args"]) if tc["args"] else {}
+                    except json.JSONDecodeError:
+                        args = {"input": tc["args"]}
+                    parsed_tool_calls.append({
+                        "id": tc["id"] or f"call_{iteration}_{tc['name']}",
+                        "name": tc["name"],
+                        "args": args
+                    })
+
+            if not parsed_tool_calls:
+                messages.append(AIMessage(content=full_content))
+                break
+
+            # Append AI message with tool calls
+            ai_msg = AIMessage(content=full_content, tool_calls=parsed_tool_calls)
+            messages.append(ai_msg)
+
+            # Yield search status marker
+            yield "\n\n> Searching the web...\n\n"
+
+            # Execute tool calls
+            for tc in parsed_tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc["args"]
+                tool_call_id = tc["id"]
+
+                try:
+                    tool_func = self.tool_map.get(tool_name)
+                    if tool_func:
+                        result = await tool_func.ainvoke(tool_args)
+                    else:
+                        result = f"Error: Unknown tool '{tool_name}'"
+                except Exception as e:
+                    result = f"Error executing {tool_name}: {str(e)}"
+
+                tool_message = ToolMessage(
+                    content=str(result),
+                    tool_call_id=tool_call_id
                 )
+                messages.append(tool_message)
+
+            # Continue loop — LLM will process tool results
 
     async def invoke(self, question: str, conversation_id: str = None) -> str:
         """
@@ -149,51 +273,11 @@ class LangGraphAgent:
         Returns:
             str: The complete response
         """
-        # Get conversation history
-        history = []
-        is_new_conversation = False
-        if conversation_id:
-            conversation = await self.storage.get_conversation(conversation_id)
-            is_new_conversation = conversation is None
-            messages = await self.storage.get_messages(conversation_id)
-            history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
-
-        # Add current question to storage
-        if conversation_id:
-            await self.storage.add_message(
-                conversation_id=conversation_id,
-                role="user",
-                content=question,
-                model=self.model_id
-            )
-            # Set title from first message if this is a new conversation
-            if is_new_conversation:
-                # Truncate title to 50 characters max
-                title = question[:50] + "..." if len(question) > 50 else question
-                await self.storage.update_conversation_title(conversation_id, title)
-
-        # Build initial state with history
-        messages = history.copy()
-        messages.append({"role": "user", "content": question})
-
-        initial_state = {"messages": messages}
-
-        result = self.graph.invoke(initial_state)
-        raw_content = result["messages"][-1].content
-        response = TextProcessor.extract_text_content(raw_content)
-        # Convert math delimiters to standard format
-        response = TextProcessor.convert_math_delimiters(response)
-
-        # Add assistant response to storage
-        if conversation_id:
-            await self.storage.add_message(
-                conversation_id=conversation_id,
-                role="assistant",
-                content=response,
-                model=self.model_id
-            )
-
-        return response
+        # Collect from stream() to support tool-augmented path
+        full_response = ""
+        async for chunk in self.stream(question, conversation_id):
+            full_response += chunk
+        return full_response
 
     async def get_conversation_history(self, conversation_id: str):
         """

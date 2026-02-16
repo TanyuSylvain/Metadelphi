@@ -17,6 +17,7 @@ from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
 from backend.tools.workspace_tools import create_workspace_tools
+from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,8 @@ class CoworkingAgent:
         question: str,
         conversation_id: str,
         workspace_path: str,
-        max_iterations: int = 25
+        max_iterations: int = 25,
+        web_search: bool = False
     ) -> AsyncGenerator[dict, None]:
         """
         Stream the coworking agent's response with SSE events.
@@ -62,6 +64,7 @@ class CoworkingAgent:
             conversation_id: Conversation ID for storage
             workspace_path: Absolute path to workspace directory
             max_iterations: Maximum ReAct loop iterations
+            web_search: Enable web search tools
 
         Yields:
             Dict events: plan, thinking_chunk, tool_start, tool_result,
@@ -72,6 +75,9 @@ class CoworkingAgent:
 
         # Create workspace-bound tools
         tools = create_workspace_tools(workspace_path)
+        if web_search:
+            search_tools = await get_web_search_tools()
+            tools.extend(search_tools)
         tool_map = {t.name: t for t in tools}
 
         # Bind tools to LLM
@@ -315,7 +321,8 @@ class CoworkingAgent:
         question: str,
         conversation_id: str,
         workspace_path: str,
-        max_iterations: int = 25
+        max_iterations: int = 25,
+        web_search: bool = False
     ) -> dict:
         """
         Run the coworking agent and return the final result.
@@ -325,12 +332,13 @@ class CoworkingAgent:
             conversation_id: Conversation ID
             workspace_path: Workspace directory path
             max_iterations: Maximum iterations
+            web_search: Enable web search tools
 
         Returns:
             Dict with final_answer and generated_files
         """
         result = {"final_answer": "", "generated_files": []}
-        async for event in self.stream(question, conversation_id, workspace_path, max_iterations):
+        async for event in self.stream(question, conversation_id, workspace_path, max_iterations, web_search):
             if event["type"] == "done":
                 result["final_answer"] = event.get("final_answer", "")
                 result["generated_files"] = event.get("generated_files", [])

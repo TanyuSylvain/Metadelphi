@@ -26,13 +26,15 @@ class Settings(BaseSettings):
     # Provider API Keys
     mistral_api_key: Optional[str] = None
     qwen_api_key: Optional[str] = None
-    dashscope_api_key: Optional[str] = None
     glm_api_key: Optional[str] = None
     zhipuai_api_key: Optional[str] = None
     minimax_api_key: Optional[str] = None
     deepseek_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+
+    # Tool API Keys
+    dashscope_api_key: Optional[str] = None
 
     # Provider Base URLs
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"

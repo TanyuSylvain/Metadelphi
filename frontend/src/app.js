@@ -29,6 +29,7 @@ export class ChatApp {
         this.modelSelectElement = document.getElementById('modelSelect');
         this.thinkingToggle = document.getElementById('thinkingToggle');
         this.markdownToggle = document.getElementById('markdownToggle');
+        this.webSearchToggle = document.getElementById('webSearchToggle');
         this.sidebarElement = document.getElementById('sidebar');
 
         // Multi-agent elements
@@ -113,6 +114,7 @@ export class ChatApp {
         this.isProcessing = false;
         this.isThinkingEnabled = false;
         this.isMarkdownEnabled = true;
+        this.isWebSearchEnabled = false;
         this.isMultiAgentMode = false;
         this.isCoworkingMode = false;
 
@@ -240,6 +242,21 @@ export class ChatApp {
             // Re-render all assistant messages with new markdown setting
             this.messageComponent.reRenderAssistantMessages(this.isMarkdownEnabled);
         });
+
+        // Web search toggle change
+        if (this.webSearchToggle) {
+            this.webSearchToggle.addEventListener('change', (e) => {
+                this.isWebSearchEnabled = e.target.checked;
+                setStorage('webSearchEnabled', this.isWebSearchEnabled);
+            });
+
+            // Load saved web search preference
+            const savedWebSearch = getStorage('webSearchEnabled');
+            if (savedWebSearch !== null) {
+                this.isWebSearchEnabled = savedWebSearch === 'true' || savedWebSearch === true;
+                this.webSearchToggle.checked = this.isWebSearchEnabled;
+            }
+        }
 
         // Load saved sidebar state
         const sidebarCollapsed = getStorage('sidebarCollapsed') === 'true';
@@ -662,6 +679,12 @@ export class ChatApp {
             thinkingContainer.style.display = this.isMultiAgentMode ? 'none' : 'flex';
         }
 
+        // Show/hide web search toggle (visible in simple and coworking modes, hidden in debate)
+        const webSearchContainer = document.getElementById('webSearchToggleContainer');
+        if (webSearchContainer) {
+            webSearchContainer.style.display = this.isMultiAgentMode ? 'none' : 'flex';
+        }
+
         // Update debate toggle button visibility
         try {
             this.updateDebateToggleVisibility();
@@ -849,7 +872,8 @@ export class ChatApp {
                         this.isMarkdownEnabled
                     );
                 },
-                this.isThinkingEnabled
+                this.isThinkingEnabled,
+                this.isWebSearchEnabled
             );
 
             // Refresh the sidebar to update the conversation title and timestamp
@@ -1092,6 +1116,7 @@ export class ChatApp {
                 workspacePath,
                 this.isThinkingEnabled,
                 25,
+                this.isWebSearchEnabled,
                 {
                     onPlan: (steps) => {
                         if (this.toolExecutionViewer) {

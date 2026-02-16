@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.api.schemas import ChatRequest, ChatResponse
 from backend.core.agent import LangGraphAgent
+from backend.tools.web_search import get_web_search_tools
 from backend.storage import get_storage
 from backend.config import settings
 
@@ -23,27 +24,33 @@ _storage = get_storage(
 _agents: dict[str, LangGraphAgent] = {}
 
 
-def get_agent(model_id: str, thinking: bool = False) -> LangGraphAgent:
+async def get_agent(model_id: str, thinking: bool = False, web_search: bool = False) -> LangGraphAgent:
     """
-    Get or create an agent instance for the specified model and thinking mode.
+    Get or create an agent instance for the specified model, thinking mode, and web search.
 
     Args:
         model_id: Model ID to use
         thinking: Whether thinking mode is enabled
+        web_search: Whether web search is enabled
 
     Returns:
         LangGraphAgent instance
     """
     global _agents, _storage
 
-    # Key includes thinking mode since it affects the agent behavior
-    agent_key = f"{model_id}:{thinking}"
+    # Key includes thinking mode and web search since they affect the agent behavior
+    agent_key = f"{model_id}:{thinking}:{web_search}"
 
     if agent_key not in _agents:
+        tools = []
+        if web_search:
+            tools = await get_web_search_tools()
+
         _agents[agent_key] = LangGraphAgent(
             model_id=model_id,
             storage=_storage,
-            thinking=thinking
+            thinking=thinking,
+            tools=tools
         )
 
     return _agents[agent_key]
@@ -66,7 +73,8 @@ async def chat(request: ChatRequest):
     try:
         model_id = request.model or settings.default_model
         thinking = request.thinking if request.thinking is not None else False
-        agent = get_agent(model_id, thinking)
+        web_search = request.web_search or False
+        agent = await get_agent(model_id, thinking, web_search)
         conversation_id = request.conversation_id or str(uuid.uuid4())
 
         response = await agent.invoke(request.message, conversation_id)
@@ -97,11 +105,12 @@ async def chat_stream(request: ChatRequest):
     conversation_id = request.conversation_id or str(uuid.uuid4())
     model_id = request.model or settings.default_model
     thinking = request.thinking if request.thinking is not None else False
+    web_search = request.web_search or False
 
     async def generate():
         """Generate streaming response chunks."""
         try:
-            agent = get_agent(model_id, thinking)
+            agent = await get_agent(model_id, thinking, web_search)
             async for chunk in agent.stream(request.message, conversation_id):
                 yield chunk
         except Exception as e:
