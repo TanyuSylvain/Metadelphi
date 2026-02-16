@@ -44,23 +44,42 @@ async def get_web_search_tools() -> List[BaseTool]:
         return _cached_tools
 
     try:
+        import asyncio
         from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        client = MultiServerMCPClient(
-            {
-                "web-search": {
-                    "url": "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse",
-                    "transport": "sse",
-                    "headers": {
-                        "Authorization": f"Bearer {settings.dashscope_api_key}"
-                    },
-                }
-            }
-        )
+        auth_header = {"Authorization": f"Bearer {settings.dashscope_api_key}"}
+        all_tools = []
 
-        tools = await client.get_tools()
-        _cached_tools = tools
-        logger.info(f"Loaded {len(tools)} web search tools from DASHSCOPE MCP: {[t.name for t in tools]}")
+        # Connect to each Bailian MCP server sequentially with retry to avoid 429 rate limits
+        for server_name, server_url in [
+            ("web-search", "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse"),
+            ("web-parser", "https://dashscope.aliyuncs.com/api/v1/mcps/WebParser/sse"),
+        ]:
+            for attempt in range(3):
+                try:
+                    client = MultiServerMCPClient(
+                        {
+                            server_name: {
+                                "url": server_url,
+                                "transport": "sse",
+                                "headers": auth_header,
+                            }
+                        }
+                    )
+                    tools = await client.get_tools()
+                    all_tools.extend(tools)
+                    logger.info(f"Loaded {len(tools)} tools from {server_name}: {[t.name for t in tools]}")
+                    break
+                except Exception as e:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning(f"Attempt {attempt + 1} failed for {server_name}: {e}, retrying in {wait}s")
+                    await asyncio.sleep(wait)
+            else:
+                logger.error(f"Failed to load tools from {server_name} after 3 attempts")
+            await asyncio.sleep(2)
+
+        _cached_tools = all_tools
+        logger.info(f"Total Bailian MCP tools loaded: {len(_cached_tools)}")
         return _cached_tools
 
     except Exception as e:

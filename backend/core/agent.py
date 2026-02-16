@@ -236,14 +236,17 @@ class LangGraphAgent:
             ai_msg = AIMessage(content=full_content, tool_calls=parsed_tool_calls)
             messages.append(ai_msg)
 
-            # Yield search status marker
-            yield "\n\n> Searching the web...\n\n"
-
             # Execute tool calls
             for tc in parsed_tool_calls:
                 tool_name = tc["name"]
                 tool_args = tc["args"]
                 tool_call_id = tc["id"]
+
+                # Yield status marker based on tool type
+                if "pars" in tool_name.lower():
+                    yield "\n\n> Fetching Web...\n\n"
+                else:
+                    yield "\n\n> Searching the web...\n\n"
 
                 try:
                     tool_func = self.tool_map.get(tool_name)
