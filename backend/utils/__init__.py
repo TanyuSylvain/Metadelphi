@@ -10,6 +10,13 @@ from backend.utils.citation import (
     format_citations_metadata,
     strip_citations_metadata,
 )
+from backend.utils.parallel_tools import (
+    ToolCallSpec,
+    ToolResult,
+    execute_single_tool,
+    execute_tools_parallel,
+    create_tool_messages,
+)
 
 __all__ = [
     "TextProcessor",
@@ -19,4 +26,9 @@ __all__ = [
     "CITATION_SYSTEM_INSTRUCTION",
     "format_citations_metadata",
     "strip_citations_metadata",
+    "ToolCallSpec",
+    "ToolResult",
+    "execute_single_tool",
+    "execute_tools_parallel",
+    "create_tool_messages",
 ]

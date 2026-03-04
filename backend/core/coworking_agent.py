@@ -9,16 +9,22 @@ tool calling with SSE streaming for fine-grained progress updates.
 import os
 import json
 import logging
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 
+from backend.config import settings
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
 from backend.utils.citation import (
     CITATION_SYSTEM_INSTRUCTION,
     extract_citations_from_result,
+)
+from backend.utils.parallel_tools import (
+    ToolCallSpec,
+    ToolResult,
+    execute_tools_parallel,
 )
 from backend.tools.workspace_tools import create_workspace_tools
 from backend.tools.web_search import get_web_search_tools
@@ -228,30 +234,46 @@ class CoworkingAgent:
                 )
                 chat_messages.append(ai_msg)
 
-                # Execute each tool call
-                for tc in parsed_tool_calls:
-                    tool_name = tc["name"]
-                    tool_args = tc["args"]
-                    tool_call_id = tc["id"]
+                # Build tool call specs for parallel execution
+                tool_specs = [
+                    ToolCallSpec(
+                        id=tc["id"],
+                        name=tc["name"],
+                        args=tc["args"],
+                        index=idx
+                    )
+                    for idx, tc in enumerate(parsed_tool_calls)
+                ]
 
+                # Build a mapping from tool_call_id to original tool call info
+                tc_info_map: Dict[str, Dict[str, Any]] = {
+                    tc["id"]: tc for tc in parsed_tool_calls
+                }
+
+                # Yield tool_start events for all tools upfront
+                for spec in tool_specs:
                     yield {
                         "type": "tool_start",
-                        "tool_name": tool_name,
-                        "tool_input": tool_args
+                        "tool_name": spec.name,
+                        "tool_input": spec.args
                     }
 
-                    # Execute the tool
-                    try:
-                        tool_func = tool_map.get(tool_name)
-                        if tool_func:
-                            result = await tool_func.ainvoke(tool_args)
-                        else:
-                            result = f"Error: Unknown tool '{tool_name}'"
-                    except Exception as e:
-                        result = f"Error executing {tool_name}: {str(e)}"
+                # Execute tools in parallel
+                results: List[ToolResult] = await execute_tools_parallel(
+                    tool_map=tool_map,
+                    tool_calls=tool_specs,
+                    max_concurrency=settings.max_tool_concurrency,
+                    timeout=60.0
+                )
+
+                # Process results in original order
+                for result in results:
+                    tc_info = tc_info_map.get(result.tool_call_id, {})
+                    tool_name = tc_info.get("name", "unknown")
+                    tool_args = tc_info.get("args", {})
 
                     # Truncate very long results for display
-                    display_result = str(result)
+                    display_result = result.content
                     if len(display_result) > 2000:
                         display_result = display_result[:2000] + "\n[... truncated]"
 
@@ -259,11 +281,11 @@ class CoworkingAgent:
                         "type": "tool_result",
                         "tool_name": tool_name,
                         "output": display_result,
-                        "success": not str(result).startswith("Error")
+                        "success": result.success
                     }
 
                     # Check for file creation events
-                    if tool_name == "write_file" and not str(result).startswith("Error"):
+                    if tool_name == "write_file" and result.success:
                         file_path = tool_args.get("file_path", "")
                         try:
                             full_path = os.path.join(workspace_path, file_path)
@@ -280,7 +302,7 @@ class CoworkingAgent:
                         }
 
                     # Check python_execute/bash_execute for file creation hints
-                    if tool_name in ("python_execute", "bash_execute") and not str(result).startswith("Error"):
+                    if tool_name in ("python_execute", "bash_execute") and result.success:
                         # Scan workspace for new files after execution
                         new_files = self._scan_for_new_files(workspace_path, known_files)
                         for nf in new_files:
@@ -298,14 +320,14 @@ class CoworkingAgent:
 
                     # Add tool result to message history
                     tool_message = ToolMessage(
-                        content=str(result),
-                        tool_call_id=tool_call_id
+                        content=result.content,
+                        tool_call_id=result.tool_call_id
                     )
                     chat_messages.append(tool_message)
 
                     # Extract citations from search tool results
                     if "search" in tool_name.lower():
-                        extract_citations_from_result(str(result), citations)
+                        extract_citations_from_result(result.content, citations)
 
                 # Continue the ReAct loop (agent will process tool results)
 

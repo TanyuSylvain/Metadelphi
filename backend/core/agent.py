@@ -10,6 +10,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
+from backend.config import settings
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor
@@ -18,6 +19,11 @@ from backend.utils.citation import (
     extract_citations_from_result,
     format_citations_metadata,
     strip_citations_metadata,
+)
+from backend.utils.parallel_tools import (
+    ToolCallSpec,
+    execute_tools_parallel,
+    create_tool_messages,
 )
 
 logger = logging.getLogger(__name__)
@@ -250,36 +256,46 @@ class LangGraphAgent:
             ai_msg = AIMessage(content=full_content, tool_calls=parsed_tool_calls)
             messages.append(ai_msg)
 
-            # Execute tool calls
-            for tc in parsed_tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc["args"]
-                tool_call_id = tc["id"]
+            # Build tool call specs for parallel execution
+            tool_specs = [
+                ToolCallSpec(
+                    id=tc["id"],
+                    name=tc["name"],
+                    args=tc["args"],
+                    index=idx
+                )
+                for idx, tc in enumerate(parsed_tool_calls)
+            ]
 
-                # Yield status marker based on tool type
-                if "pars" in tool_name.lower():
+            # Yield status markers for all tools upfront
+            for spec in tool_specs:
+                if "pars" in spec.name.lower():
                     yield "\n\n> Fetching Web...\n\n"
                 else:
                     yield "\n\n> Searching the web...\n\n"
 
-                try:
-                    tool_func = self.tool_map.get(tool_name)
-                    if tool_func:
-                        result = await tool_func.ainvoke(tool_args)
-                    else:
-                        result = f"Error: Unknown tool '{tool_name}'"
-                except Exception as e:
-                    result = f"Error executing {tool_name}: {str(e)}"
+            # Execute tools in parallel
+            results = await execute_tools_parallel(
+                tool_map=self.tool_map,
+                tool_calls=tool_specs,
+                max_concurrency=settings.max_tool_concurrency,
+                timeout=60.0
+            )
 
+            # Add tool messages to conversation and extract citations
+            for result in results:
                 tool_message = ToolMessage(
-                    content=str(result),
-                    tool_call_id=tool_call_id
+                    content=result.content,
+                    tool_call_id=result.tool_call_id
                 )
                 messages.append(tool_message)
 
                 # Extract citations from search tool results
-                if "search" in tool_name.lower():
-                    extract_citations_from_result(str(result), citations)
+                if "search" in result.content.lower() or any(
+                    "search" in tc["name"].lower() for tc in parsed_tool_calls
+                    if tc["id"] == result.tool_call_id
+                ):
+                    extract_citations_from_result(result.content, citations)
 
             # Continue loop — LLM will process tool results
 

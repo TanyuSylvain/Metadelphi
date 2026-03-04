@@ -75,10 +75,32 @@ class ConfigWizard:
         }
     }
 
+    # MCP Server configuration templates
+    MCP_SERVERS = {
+        'DASHSCOPE': {
+            'name': 'Alibaba Bailian MCP (Web Search)',
+            'url': 'https://bailian.console.aliyun.com/',
+            'api_key_env': 'DASHSCOPE_API_KEY',
+            'servers': [
+                {
+                    'name': 'web-search',
+                    'url': 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse',
+                    'transport': 'sse'
+                },
+                {
+                    'name': 'web-parser',
+                    'url': 'https://dashscope.aliyuncs.com/api/v1/mcps/WebParser/sse',
+                    'transport': 'sse'
+                }
+            ],
+            'description': 'Web search and parsing tools via Alibaba Bailian'
+        }
+    }
+
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("UnifyLLM Configuration Wizard")
-        self.root.geometry("700x800")
+        self.root.geometry("750x900")
         self.root.resizable(False, False)
 
         # Configure style
@@ -88,6 +110,7 @@ class ConfigWizard:
         # Store API keys
         self.api_keys = {}
         self.key_entries = {}
+        self.mcp_entries = {}  # MCP server configuration entries
 
         # Load existing configuration if available
         self.load_existing_config()
@@ -162,6 +185,9 @@ class ConfigWizard:
         # Add provider configuration sections
         for provider_id, provider_info in self.PROVIDERS.items():
             self.create_provider_section(scrollable_frame, provider_id, provider_info)
+
+        # Add MCP server configuration sections
+        self.create_mcp_section(scrollable_frame)
 
         # Status bar
         self.status_frame = tk.Frame(self.root, bg='#ecf0f1', height=40)
@@ -311,6 +337,149 @@ class ConfigWizard:
             # Store reference
             self.key_entries[provider_info['base_url_var']] = url_entry
 
+    def create_mcp_section(self, parent):
+        """Create MCP server configuration section."""
+        # Separator
+        separator = tk.Frame(parent, bg='#bdc3c7', height=2)
+        separator.pack(fill=tk.X, padx=10, pady=15)
+
+        # Section header
+        header_label = tk.Label(
+            parent,
+            text="MCP Server Configuration (Optional)",
+            font=('Arial', 12, 'bold'),
+            bg='white',
+            fg='#2c3e50'
+        )
+        header_label.pack(anchor=tk.W, padx=10, pady=(0, 5))
+
+        desc_label = tk.Label(
+            parent,
+            text="Configure MCP servers for extended tool capabilities like web search.",
+            font=('Arial', 9),
+            bg='white',
+            fg='#7f8c8d',
+            justify=tk.LEFT
+        )
+        desc_label.pack(anchor=tk.W, padx=10, pady=(0, 10))
+
+        # MCP server frame
+        mcp_frame = tk.LabelFrame(
+            parent,
+            text="Alibaba Bailian MCP (Web Search & Parser)",
+            font=('Arial', 11, 'bold'),
+            bg='white',
+            padx=10,
+            pady=10
+        )
+        mcp_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # Description
+        mcp_desc = tk.Label(
+            mcp_frame,
+            text="Enable web search and web parsing tools via Alibaba Bailian MCP.",
+            font=('Arial', 9),
+            bg='white',
+            fg='#7f8c8d',
+            justify=tk.LEFT
+        )
+        mcp_desc.pack(anchor=tk.W, pady=(0, 5))
+
+        # API Key entry for DASHSCOPE
+        key_frame = tk.Frame(mcp_frame, bg='white')
+        key_frame.pack(fill=tk.X, pady=5)
+
+        key_label = tk.Label(
+            key_frame,
+            text="API Key:",
+            font=('Arial', 10),
+            bg='white',
+            width=10,
+            anchor=tk.W
+        )
+        key_label.pack(side=tk.LEFT)
+
+        existing_value = self.api_keys.get('DASHSCOPE_API_KEY', '')
+
+        key_entry = tk.Entry(
+            key_frame,
+            font=('Arial', 10),
+            width=50,
+            show='*'
+        )
+        key_entry.insert(0, existing_value)
+        key_entry.pack(side=tk.LEFT, padx=5)
+
+        # Store reference
+        self.mcp_entries['DASHSCOPE_API_KEY'] = key_entry
+
+        # Show/Hide button
+        show_var = tk.BooleanVar(value=False)
+
+        def toggle_password():
+            if show_var.get():
+                key_entry.config(show='')
+            else:
+                key_entry.config(show='*')
+
+        show_button = ttk.Checkbutton(
+            key_frame,
+            text="Show",
+            variable=show_var,
+            command=toggle_password,
+            width=8
+        )
+        show_button.pack(side=tk.LEFT)
+
+        # Get API key link
+        link_label = tk.Label(
+            mcp_frame,
+            text="Get your API key from Alibaba Bailian Console",
+            font=('Arial', 9, 'underline'),
+            bg='white',
+            fg='#3498db',
+            cursor='hand2'
+        )
+        link_label.pack(anchor=tk.W, pady=(0, 5))
+        link_label.bind('<Button-1>', lambda e: webbrowser.open('https://bailian.console.aliyun.com/'))
+
+        # Tool Concurrency setting
+        concurrency_frame = tk.Frame(mcp_frame, bg='white')
+        concurrency_frame.pack(fill=tk.X, pady=5)
+
+        concurrency_label = tk.Label(
+            concurrency_frame,
+            text="Max Parallel Tools:",
+            font=('Arial', 9),
+            bg='white',
+            width=15,
+            anchor=tk.W
+        )
+        concurrency_label.pack(side=tk.LEFT)
+
+        existing_concurrency = self.api_keys.get('MAX_TOOL_CONCURRENCY', '5')
+
+        concurrency_entry = tk.Entry(
+            concurrency_frame,
+            font=('Arial', 9),
+            width=10
+        )
+        concurrency_entry.insert(0, existing_concurrency)
+        concurrency_entry.pack(side=tk.LEFT, padx=5)
+
+        # Store reference
+        self.mcp_entries['MAX_TOOL_CONCURRENCY'] = concurrency_entry
+
+        # Help text
+        help_label = tk.Label(
+            concurrency_frame,
+            text="(1-10, controls how many tools run simultaneously)",
+            font=('Arial', 8),
+            bg='white',
+            fg='#95a5a6'
+        )
+        help_label.pack(side=tk.LEFT, padx=5)
+
     def get_status_text(self):
         """Get status text showing how many providers are configured"""
         configured = sum(
@@ -334,6 +503,13 @@ class ConfigWizard:
                 # Check if this is an API key (not a base URL)
                 if key_var.endswith('_API_KEY'):
                     has_valid_key = True
+
+        # Collect MCP configuration entries
+        mcp_config_data = {}
+        for key_var, entry in self.mcp_entries.items():
+            value = entry.get().strip()
+            if value:
+                mcp_config_data[key_var] = value
 
         # Validate at least one API key is configured
         if not has_valid_key:
@@ -367,6 +543,15 @@ class ConfigWizard:
                                 f.write(f"{base_url_var}={config_data[base_url_var]}\n")
 
                         f.write("\n")
+
+                # Write MCP server configuration
+                if mcp_config_data:
+                    f.write("# MCP Server Configuration\n")
+                    if 'DASHSCOPE_API_KEY' in mcp_config_data:
+                        f.write(f"DASHSCOPE_API_KEY={mcp_config_data['DASHSCOPE_API_KEY']}\n")
+                    if 'MAX_TOOL_CONCURRENCY' in mcp_config_data:
+                        f.write(f"MAX_TOOL_CONCURRENCY={mcp_config_data['MAX_TOOL_CONCURRENCY']}\n")
+                    f.write("\n")
 
             messagebox.showinfo(
                 "Configuration Saved",

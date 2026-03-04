@@ -1,10 +1,12 @@
 """
-Web Search Tool via Alibaba DASHSCOPE MCP Server.
+Web Search Tool via Configurable MCP Servers.
 
-Lazy-loads web search tools from the DASHSCOPE MCP server using langchain-mcp-adapters.
-Returns empty list if IQS_API_KEY is not configured (graceful degradation).
+Lazy-loads web search tools from configured MCP servers using langchain-mcp-adapters.
+Supports multi-server configuration via MCP_SERVERS env var or falls back to legacy
+DASHSCOPE default servers. Returns empty list if no servers are configured.
 """
 
+import asyncio
 import logging
 from typing import List
 
@@ -19,16 +21,17 @@ _cached_tools: List[BaseTool] | None = None
 
 
 def is_web_search_available() -> bool:
-    """Check if web search is available (DASHSCOPE API key configured)."""
-    return bool(settings.dashscope_api_key)
+    """Check if web search is available (MCP servers configured)."""
+    servers = settings.get_mcp_servers()
+    return bool(servers)
 
 
 async def get_web_search_tools() -> List[BaseTool]:
     """
-    Get web search tools from the DASHSCOPE MCP server.
+    Get web search tools from configured MCP servers.
 
     Returns cached tools if already loaded. Returns empty list
-    if DASHSCOPE_API_KEY is not configured.
+    if no MCP servers are configured.
 
     Returns:
         List of LangChain tools for web search
@@ -38,31 +41,43 @@ async def get_web_search_tools() -> List[BaseTool]:
     if _cached_tools is not None:
         return _cached_tools
 
-    if not settings.dashscope_api_key:
-        logger.info("DASHSCOPE_API_KEY not configured, web search unavailable")
+    servers = settings.get_mcp_servers()
+    if not servers:
+        logger.info("No MCP servers configured, web search unavailable")
         _cached_tools = []
         return _cached_tools
 
     try:
-        import asyncio
         from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        auth_header = {"Authorization": f"Bearer {settings.dashscope_api_key}"}
         all_tools = []
 
-        # Connect to each Bailian MCP server sequentially with retry to avoid 429 rate limits
-        for server_name, server_url in [
-            ("web-search", "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse"),
-            ("web-parser", "https://dashscope.aliyuncs.com/api/v1/mcps/WebParser/sse"),
-        ]:
+        # Connect to each configured MCP server sequentially with retry to avoid 429 rate limits
+        for server in servers:
+            server_name = server.get("name", "unnamed")
+            server_url = server.get("url", "")
+            transport = server.get("transport", "sse")
+            api_key = server.get("api_key")
+            custom_headers = server.get("headers", {})
+
+            if not server_url:
+                logger.warning(f"Skipping MCP server '{server_name}': no URL configured")
+                continue
+
+            # Build headers with authentication
+            headers = dict(custom_headers)
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            # Retry logic to handle transient failures
             for attempt in range(3):
                 try:
                     client = MultiServerMCPClient(
                         {
                             server_name: {
                                 "url": server_url,
-                                "transport": "sse",
-                                "headers": auth_header,
+                                "transport": transport,
+                                "headers": headers,
                             }
                         }
                     )
@@ -76,13 +91,21 @@ async def get_web_search_tools() -> List[BaseTool]:
                     await asyncio.sleep(wait)
             else:
                 logger.error(f"Failed to load tools from {server_name} after 3 attempts")
+
+            # Delay between servers to avoid rate limiting
             await asyncio.sleep(2)
 
         _cached_tools = all_tools
-        logger.info(f"Total Bailian MCP tools loaded: {len(_cached_tools)}")
+        logger.info(f"Total MCP tools loaded: {len(_cached_tools)}")
         return _cached_tools
 
     except Exception as e:
-        logger.error(f"Failed to load web search tools from DASHSCOPE MCP: {e}")
+        logger.error(f"Failed to load web search tools from MCP servers: {e}")
         _cached_tools = []
         return _cached_tools
+
+
+def clear_tool_cache():
+    """Clear the cached tools to force reload on next call."""
+    global _cached_tools
+    _cached_tools = None
