@@ -9,4 +9,6 @@ venv
 *.pyo
 *.pyd
 .Python
+.cursor
+.claude
 CLAUDE.md
