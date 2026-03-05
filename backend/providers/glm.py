@@ -27,13 +27,6 @@ class GLMProvider(BaseLLMProvider):
                 "supports_thinking": True,
                 "thinking_locked": False
             },
-            {
-                "id": "glm-4.6",
-                "name": "GLM 4.6",
-                "description": "Balanced performance and efficiency",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
         ]
 
     def get_provider_name(self) -> str:

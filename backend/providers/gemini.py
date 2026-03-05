@@ -14,8 +14,8 @@ class GeminiProvider(BaseLLMProvider):
         """Return available Gemini models."""
         return [
             {
-                "id": "gemini-3-pro-preview",
-                "name": "Gemini-3-pro-preview",
+                "id": "gemini-3.1-pro-preview",
+                "name": "Gemini-3.1-pro-preview",
                 "description": "Most powerful Gemini with thinking",
                 "supports_thinking": True,
                 "thinking_locked": False

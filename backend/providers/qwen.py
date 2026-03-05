@@ -14,6 +14,13 @@ class QwenProvider(BaseLLMProvider):
         """Return available Qwen models."""
         return [
             {
+                "id": "qwen3.5-plus",
+                "name": "Qwen 3.5 plus",
+                "description": "Lastest Qwen model",
+                "supports_thinking": True,
+                "thinking_locked": False,
+            },
+            {
                 "id": "qwen3-max-preview",
                 "name": "Qwen3 Max Preview",
                 "description": "Most capable Qwen model for complex reasoning",
@@ -53,9 +60,9 @@ class QwenProvider(BaseLLMProvider):
                 "supports_thinking": False
             },
             {
-                "id": "qwen-flash",
-                "name": "Qwen3 Flash",
-                "description": "Qwen3 Flash model",
+                "id": "qwen3.5-flash",
+                "name": "Qwen3.5 Flash",
+                "description": "Qwen3.5 Flash model",
                 "supports_thinking": True,
                 "thinking_locked": False,
             },
@@ -67,18 +74,18 @@ class QwenProvider(BaseLLMProvider):
                 "thinking_locked": False,
             },
             {
-                "id": "glm-4.7",
-                "name": "GLM 4.7",
-                "description": "GLM 4.7",
+                "id": "glm-5",
+                "name": "GLM 5",
+                "description": "GLM 5",
                 "supports_thinking": True,
                 "thinking_locked": False,
             },
             {
-                "id": "kimi-k2-thinking",
-                "name": "Kimi K2 Thinking",
-                "description": "Kimi K2 Thinking",
+                "id": "kimi-k2.5",
+                "name": "Kimi K2.5",
+                "description": "Kimi K2.5",
                 "supports_thinking": True,
-                "thinking_locked": True,
+                "thinking_locked": False,
             },
         ]
 
