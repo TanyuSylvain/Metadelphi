@@ -6,10 +6,12 @@ file operations, and code execution within a workspace.
 """
 
 import os
+import sys
 import json
 import uuid
 import asyncio
 import subprocess
+import shutil
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse
 
@@ -150,31 +152,111 @@ async def download_file(
 @router.get("/select-workspace")
 async def select_workspace():
     """
-    Open a native macOS folder picker dialog and return the selected path.
+    Open a native folder picker dialog and return the selected path.
+    Supports macOS (osascript), Linux (zenity/kdialog), and Windows (PowerShell).
 
     Returns:
         {"path": "/selected/path"} on success, {"path": null} if cancelled
     """
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "osascript", "-e",
-            'POSIX path of (choose folder with prompt "Select workspace folder")',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+        if sys.platform == "darwin":
+            # macOS: use osascript
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e",
+                'POSIX path of (choose folder with prompt "Select workspace folder")',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
 
-        if proc.returncode != 0:
-            # User cancelled or error
+            if proc.returncode != 0:
+                return {"path": None}
+
+            path = stdout.decode().strip().rstrip("/")
+            if path and os.path.isdir(path):
+                return {"path": path}
             return {"path": None}
 
-        path = stdout.decode().strip().rstrip("/")
-        if path and os.path.isdir(path):
-            return {"path": path}
-        return {"path": None}
+        elif sys.platform.startswith("linux"):
+            # Linux: try zenity first (GNOME), then kdialog (KDE)
+            if shutil.which("zenity"):
+                proc = await asyncio.create_subprocess_exec(
+                    "zenity", "--file-selection", "--directory",
+                    "--title=Select workspace folder",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                if proc.returncode != 0:
+                    return {"path": None}
+
+                path = stdout.decode().strip()
+                if path and os.path.isdir(path):
+                    return {"path": path}
+                return {"path": None}
+
+            elif shutil.which("kdialog"):
+                proc = await asyncio.create_subprocess_exec(
+                    "kdialog", "--getexistingdirectory",
+                    "--title", "Select workspace folder",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                if proc.returncode != 0:
+                    return {"path": None}
+
+                path = stdout.decode().strip()
+                if path and os.path.isdir(path):
+                    return {"path": path}
+                return {"path": None}
+
+            else:
+                # No dialog tool available
+                raise HTTPException(
+                    status_code=501,
+                    detail="No folder picker available. Install 'zenity' (GNOME) or 'kdialog' (KDE)."
+                )
+
+        elif sys.platform == "win32":
+            # Windows: use PowerShell with FolderBrowserDialog
+            ps_script = '''
+            Add-Type -AssemblyName System.Windows.Forms
+            $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+            $dialog.Description = "Select workspace folder"
+            $dialog.ShowNewFolderButton = $true
+            if ($dialog.ShowDialog() -eq "OK") {
+                Write-Output $dialog.SelectedPath
+            }
+            '''
+            proc = await asyncio.create_subprocess_exec(
+                "powershell", "-Command", ps_script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+            if proc.returncode != 0:
+                return {"path": None}
+
+            path = stdout.decode().strip()
+            if path and os.path.isdir(path):
+                return {"path": path}
+            return {"path": None}
+
+        else:
+            # Unsupported platform
+            raise HTTPException(
+                status_code=501,
+                detail=f"Unsupported platform: {sys.platform}"
+            )
 
     except asyncio.TimeoutError:
         return {"path": None}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
