@@ -13,6 +13,7 @@ from langchain_core.tools import BaseTool
 from backend.config import settings
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
+from backend.tools.utils import format_tool_result, format_tool_start
 from backend.utils import TextProcessor
 from backend.utils.citation import (
     CITATION_SYSTEM_INSTRUCTION,
@@ -23,7 +24,6 @@ from backend.utils.citation import (
 from backend.utils.parallel_tools import (
     ToolCallSpec,
     execute_tools_parallel,
-    create_tool_messages,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,13 +266,11 @@ class LangGraphAgent:
                 )
                 for idx, tc in enumerate(parsed_tool_calls)
             ]
+            tool_call_map = {tc["id"]: tc for tc in parsed_tool_calls}
 
             # Yield status markers for all tools upfront
             for spec in tool_specs:
-                if "pars" in spec.name.lower():
-                    yield "\n\n> Fetching Web...\n\n"
-                else:
-                    yield "\n\n> Searching the web...\n\n"
+                yield f"\n\n{format_tool_start(spec.name, spec.args)}\n\n"
 
             # Execute tools in parallel
             results = await execute_tools_parallel(
@@ -284,6 +282,10 @@ class LangGraphAgent:
 
             # Add tool messages to conversation and extract citations
             for result in results:
+                original_tool = tool_call_map.get(result.tool_call_id)
+                if original_tool:
+                    yield f"\n\n{format_tool_result(original_tool['name'], original_tool['args'], result.content, result.success)}\n\n"
+
                 tool_message = ToolMessage(
                     content=result.content,
                     tool_call_id=result.tool_call_id
