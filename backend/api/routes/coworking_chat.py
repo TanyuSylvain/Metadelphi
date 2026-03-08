@@ -12,6 +12,7 @@ import uuid
 import asyncio
 import subprocess
 import shutil
+import locale
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse
 
@@ -31,6 +32,72 @@ _storage = get_storage(
 
 # Agent pool (keyed by model_id:thinking)
 _agents: dict[str, CoworkingAgent] = {}
+
+
+def _decode_subprocess_output(raw: bytes) -> str:
+    """Decode subprocess output using the active locale before falling back to UTF-8."""
+    encoding = locale.getpreferredencoding(False) or "utf-8"
+    return raw.decode(encoding, errors="replace").strip()
+
+
+def _select_workspace_windows_tkinter() -> str | None:
+    """Use the native Windows folder picker via tkinter."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    root.update()
+
+    try:
+        path = filedialog.askdirectory(
+            parent=root,
+            title="Select workspace folder",
+            mustexist=False,
+        )
+    finally:
+        root.destroy()
+
+    path = (path or "").strip()
+    if path and os.path.isdir(path):
+        return path
+    return None
+
+
+async def _select_workspace_windows_powershell() -> str | None:
+    """Fallback Windows folder picker using PowerShell."""
+    ps_script = """
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Select workspace folder"
+    $dialog.ShowNewFolderButton = $true
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        Write-Output $dialog.SelectedPath
+    }
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        ps_script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+    if proc.returncode != 0:
+        return None
+
+    path = _decode_subprocess_output(stdout)
+    if path and os.path.isdir(path):
+        return path
+    return None
 
 
 def get_agent(model_id: str, thinking: bool = False) -> CoworkingAgent:
@@ -221,28 +288,13 @@ async def select_workspace():
                 )
 
         elif sys.platform == "win32":
-            # Windows: use PowerShell with FolderBrowserDialog
-            ps_script = '''
-            Add-Type -AssemblyName System.Windows.Forms
-            $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-            $dialog.Description = "Select workspace folder"
-            $dialog.ShowNewFolderButton = $true
-            if ($dialog.ShowDialog() -eq "OK") {
-                Write-Output $dialog.SelectedPath
-            }
-            '''
-            proc = await asyncio.create_subprocess_exec(
-                "powershell", "-Command", ps_script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            # Windows: prefer tkinter since it stays inside the running Python app.
+            try:
+                path = await asyncio.to_thread(_select_workspace_windows_tkinter)
+            except Exception:
+                path = await _select_workspace_windows_powershell()
 
-            if proc.returncode != 0:
-                return {"path": None}
-
-            path = stdout.decode().strip()
-            if path and os.path.isdir(path):
+            if path:
                 return {"path": path}
             return {"path": None}
 
