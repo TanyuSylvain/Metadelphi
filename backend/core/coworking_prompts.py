@@ -33,6 +33,7 @@ You have the following tools:
 5. **Error handling**: If a tool call fails, read the error message and try an alternative approach.
 6. **Report results**: After completing the task, summarize what was done and list any files created.
 7. **File paths**: Always use paths relative to the workspace root.
+8. **Language consistency**: Reply in the same language as the user's latest message unless the user explicitly asks you to switch languages. Keep the plan, progress updates, final answer, and any user-facing file content in that language by default.
 """
 
 COWORKING_PLANNING_PROMPT = """Analyze the user's request and create a step-by-step plan.
@@ -43,5 +44,5 @@ Consider:
 - What code needs to be executed?
 - What is the logical order of operations?
 
-Respond with your plan as a numbered list, then begin executing it.
+Respond with your plan as a numbered list in the same language as the user's latest message, unless the user explicitly asks you to switch languages, then begin executing it.
 """
