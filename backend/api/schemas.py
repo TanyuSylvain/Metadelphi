@@ -85,11 +85,12 @@ class ConversationInfo(BaseModel):
     """Information about a conversation."""
     id: str = Field(..., description="Conversation ID")
     model: str = Field(..., description="Model used")
-    mode: str = Field(default="simple", description="Conversation mode: 'simple' or 'debate'")
+    mode: str = Field(default="simple", description="Conversation mode: 'simple', 'debate', or 'coworking'")
     created_at: str = Field(..., description="Creation timestamp")
     updated_at: str = Field(..., description="Last update timestamp")
     message_count: int = Field(..., description="Number of messages")
     title: str = Field(..., description="Conversation title")
+    metadata: Dict = Field(default_factory=dict, description="Conversation metadata")
 
 
 class ConversationsResponse(BaseModel):

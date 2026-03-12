@@ -17,7 +17,10 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse
 
 from backend.api.schemas import CoworkingChatRequest, OpenFileRequest
-from backend.core.coworking_agent import CoworkingAgent
+from backend.core.coworking_agent import (
+    CoworkingAgent,
+    ensure_coworking_session_state,
+)
 from backend.tools.workspace_tools import resolve_in_workspace
 from backend.storage import get_storage
 from backend.config import settings
@@ -134,6 +137,8 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
     - tool_start: Before tool execution
     - tool_result: After tool execution
     - file_created: File written to workspace
+    - file_deleted: File removed from workspace during the round
+    - session_notice: Session-level file tracking notice for the chat window
     - response_chunk: Final response token
     - done: Workflow complete
     - error: Error occurred
@@ -142,9 +147,9 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     # Validate workspace path
-    workspace_path = os.path.abspath(request.workspace_path)
     if not os.path.isabs(request.workspace_path):
         raise HTTPException(status_code=400, detail="workspace_path must be an absolute path")
+    workspace_path = os.path.abspath(request.workspace_path)
 
     # Resolve model
     model_id = request.model or settings.default_model
@@ -185,6 +190,42 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
             "X-Model-ID": model_id
         }
     )
+
+
+@router.get("/session-state")
+async def get_coworking_session_state(
+    conversation_id: str = Query(..., description="Conversation ID"),
+    workspace_path: str = Query(..., description="Absolute workspace directory path"),
+):
+    """Validate and return the coworking file-tracking state for session recovery."""
+    if not await _storage.conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not os.path.isabs(workspace_path):
+        raise HTTPException(status_code=400, detail="workspace_path must be an absolute path")
+    workspace_path = os.path.abspath(workspace_path)
+
+    state = await ensure_coworking_session_state(
+        storage=_storage,
+        conversation_id=conversation_id,
+        workspace_path=workspace_path,
+        add_reset_notice_message=True,
+    )
+
+    generated_files = []
+    for file_path in state["generated_files"]:
+        try:
+            file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+        except Exception:
+            file_size = 0
+        generated_files.append({"path": file_path, "size": file_size})
+
+    return {
+        "generated_files": generated_files,
+        "deleted_files": state["deleted_files"],
+        "state_reset_due_to_inconsistency": state["did_reset"],
+        "reset_notice": state["reset_notice"],
+    }
 
 
 @router.get("/files")

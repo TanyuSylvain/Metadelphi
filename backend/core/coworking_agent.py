@@ -9,6 +9,7 @@ tool calling with SSE streaming for fine-grained progress updates.
 import os
 import json
 import logging
+import re
 from typing import Optional, AsyncGenerator, Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -31,6 +32,231 @@ from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
 
 logger = logging.getLogger(__name__)
+
+COWORKING_WORKSPACE_PATH_KEY = "coworking_workspace_path"
+COWORKING_BASELINE_FILES_KEY = "coworking_baseline_files"
+COWORKING_GENERATED_FILES_KEY = "coworking_generated_files"
+COWORKING_DELETED_FILES_KEY = "coworking_deleted_files"
+LEGACY_INITIAL_WORKSPACE_FILES_KEY = "initial_workspace_files"
+LEGACY_CONVERSATION_GENERATED_FILES_KEY = "conversation_generated_files"
+FILE_TRACKING_RESET_NOTICE = (
+    "Coworking file tracking was reset because the workspace changed outside tracked "
+    "coworking actions. The baseline was rebuilt from the current workspace."
+)
+
+
+def _normalize_file_list(paths: Optional[List[str]]) -> List[str]:
+    """Normalize a stored file list to unique, sorted relative paths."""
+    if not paths:
+        return []
+    normalized = set()
+    for path in paths:
+        if not path:
+            continue
+        normalized.add(str(path).replace("\\", "/"))
+    return sorted(normalized)
+
+
+def _list_workspace_files(workspace_path: str) -> List[str]:
+    """List all non-hidden files in workspace as relative paths."""
+    all_files = []
+    try:
+        for root, dirs, files in os.walk(workspace_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for file_name in files:
+                if file_name.startswith('.'):
+                    continue
+                rel_path = os.path.relpath(os.path.join(root, file_name), workspace_path)
+                all_files.append(rel_path.replace("\\", "/"))
+    except Exception:
+        pass
+    return sorted(all_files)
+
+
+def _build_tracking_metadata(
+    workspace_path: str,
+    baseline_files: List[str],
+    generated_files: List[str],
+    deleted_files: List[str]
+) -> Dict[str, Any]:
+    """Build the coworking tracking payload persisted in conversation metadata."""
+    baseline_files = _normalize_file_list(baseline_files)
+    generated_files = _normalize_file_list(generated_files)
+    deleted_files = _normalize_file_list(deleted_files)
+    return {
+        COWORKING_WORKSPACE_PATH_KEY: os.path.abspath(workspace_path),
+        COWORKING_BASELINE_FILES_KEY: baseline_files,
+        COWORKING_GENERATED_FILES_KEY: generated_files,
+        COWORKING_DELETED_FILES_KEY: deleted_files,
+        # Keep legacy keys aligned for older readers.
+        LEGACY_INITIAL_WORKSPACE_FILES_KEY: baseline_files,
+        LEGACY_CONVERSATION_GENERATED_FILES_KEY: generated_files,
+    }
+
+
+def _looks_like_plan_only_response(text: str) -> bool:
+    """Heuristic for detecting a numbered planning response with no execution."""
+    if not text:
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    numbered_lines = 0
+    for line in stripped.splitlines():
+        if re.match(r"^\s*\d+[\.\)、)]\s*", line):
+            numbered_lines += 1
+
+    has_plan_language = any(
+        phrase in stripped.lower()
+        for phrase in ("plan", "steps", "step-by-step", "first,", "first ", "execute", "tool")
+    )
+    return numbered_lines >= 2 or (numbered_lines >= 1 and has_plan_language)
+
+
+def _extract_tracking_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract coworking tracking state from conversation metadata."""
+    baseline_files = metadata.get(COWORKING_BASELINE_FILES_KEY)
+    generated_files = metadata.get(COWORKING_GENERATED_FILES_KEY)
+    deleted_files = metadata.get(COWORKING_DELETED_FILES_KEY)
+
+    if baseline_files is None and metadata.get(LEGACY_INITIAL_WORKSPACE_FILES_KEY) is not None:
+        baseline_files = metadata.get(LEGACY_INITIAL_WORKSPACE_FILES_KEY)
+        generated_files = metadata.get(LEGACY_CONVERSATION_GENERATED_FILES_KEY, [])
+        deleted_files = []
+
+    return {
+        "workspace_path": metadata.get(COWORKING_WORKSPACE_PATH_KEY),
+        "baseline_files": _normalize_file_list(baseline_files),
+        "generated_files": _normalize_file_list(generated_files),
+        "deleted_files": _normalize_file_list(deleted_files),
+        "initialized": baseline_files is not None,
+    }
+
+
+async def ensure_coworking_session_state(
+    storage: ConversationStorage,
+    conversation_id: str,
+    workspace_path: str,
+    add_reset_notice_message: bool = False,
+) -> Dict[str, Any]:
+    """
+    Load, validate, and if needed reset the coworking session file state.
+
+    The predicted workspace state is:
+        baseline_files + generated_files - deleted_files
+
+    If the real workspace differs, the baseline is rebuilt from the current workspace
+    and the delta lists are cleared.
+    """
+    workspace_path = os.path.abspath(workspace_path)
+    conversation = await storage.get_conversation(conversation_id)
+    metadata = (conversation or {}).get("metadata", {})
+    tracking = _extract_tracking_metadata(metadata)
+    actual_files = _list_workspace_files(workspace_path)
+    actual_set = set(actual_files)
+
+    state_changed = False
+    did_reset = False
+    reset_notice = None
+
+    stored_workspace_path = tracking["workspace_path"]
+    if stored_workspace_path and os.path.abspath(stored_workspace_path) != workspace_path:
+        tracking["baseline_files"] = actual_files
+        tracking["generated_files"] = []
+        tracking["deleted_files"] = []
+        tracking["initialized"] = True
+        state_changed = True
+    elif not tracking["initialized"]:
+        tracking["baseline_files"] = actual_files
+        tracking["generated_files"] = []
+        tracking["deleted_files"] = []
+        tracking["initialized"] = True
+        state_changed = True
+    else:
+        predicted_set = (
+            set(tracking["baseline_files"])
+            | set(tracking["generated_files"])
+        ) - set(tracking["deleted_files"])
+        if predicted_set != actual_set:
+            tracking["baseline_files"] = actual_files
+            tracking["generated_files"] = []
+            tracking["deleted_files"] = []
+            state_changed = True
+            did_reset = True
+            reset_notice = FILE_TRACKING_RESET_NOTICE
+        else:
+            # Re-normalize delta lists against the baseline when state is still valid.
+            baseline_set = set(tracking["baseline_files"])
+            generated_files = sorted(actual_set - baseline_set)
+            deleted_files = sorted(baseline_set - actual_set)
+            if (
+                generated_files != tracking["generated_files"]
+                or deleted_files != tracking["deleted_files"]
+            ):
+                tracking["generated_files"] = generated_files
+                tracking["deleted_files"] = deleted_files
+                state_changed = True
+
+    if state_changed:
+        await storage.update_conversation_metadata(
+            conversation_id,
+            _build_tracking_metadata(
+                workspace_path=workspace_path,
+                baseline_files=tracking["baseline_files"],
+                generated_files=tracking["generated_files"],
+                deleted_files=tracking["deleted_files"],
+            ),
+        )
+
+    if did_reset and add_reset_notice_message:
+        await storage.add_message(
+            conversation_id=conversation_id,
+            role="system",
+            content=FILE_TRACKING_RESET_NOTICE,
+            metadata={"event": "coworking_file_tracking_reset"},
+        )
+
+    return {
+        "baseline_files": tracking["baseline_files"],
+        "generated_files": tracking["generated_files"],
+        "deleted_files": tracking["deleted_files"],
+        "actual_files": actual_files,
+        "did_reset": did_reset,
+        "reset_notice": reset_notice,
+    }
+
+
+async def recompute_coworking_session_deltas(
+    storage: ConversationStorage,
+    conversation_id: str,
+    workspace_path: str,
+    baseline_files: List[str],
+) -> Dict[str, Any]:
+    """Recompute and persist the coworking generated/deleted lists for the session."""
+    workspace_path = os.path.abspath(workspace_path)
+    actual_files = _list_workspace_files(workspace_path)
+    actual_set = set(actual_files)
+    baseline_set = set(_normalize_file_list(baseline_files))
+    generated_files = sorted(actual_set - baseline_set)
+    deleted_files = sorted(baseline_set - actual_set)
+
+    await storage.update_conversation_metadata(
+        conversation_id,
+        _build_tracking_metadata(
+            workspace_path=workspace_path,
+            baseline_files=list(baseline_set),
+            generated_files=generated_files,
+            deleted_files=deleted_files,
+        ),
+    )
+
+    return {
+        "baseline_files": sorted(baseline_set),
+        "generated_files": generated_files,
+        "deleted_files": deleted_files,
+        "actual_files": actual_files,
+    }
 
 
 class CoworkingAgent:
@@ -78,7 +304,8 @@ class CoworkingAgent:
 
         Yields:
             Dict events: plan, thinking_chunk, tool_start, tool_result,
-                        file_created, response_chunk, done, error
+                        file_created, file_deleted, session_notice,
+                        response_chunk, done, error
         """
         # Ensure workspace exists
         os.makedirs(workspace_path, exist_ok=True)
@@ -105,22 +332,6 @@ class CoworkingAgent:
         messages = await self.storage.get_messages(conversation_id)
         history = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
-        # Load or initialize file tracking from conversation metadata
-        conv_metadata = (conversation or {}).get("metadata", {})
-        initial_workspace_files = conv_metadata.get("initial_workspace_files", None)
-        conversation_generated_files = conv_metadata.get("conversation_generated_files", [])
-
-        if initial_workspace_files is None:
-            # New conversation or first run — snapshot current workspace files
-            initial_workspace_files = self._list_all_files(workspace_path)
-            await self.storage.update_conversation_metadata(conversation_id, {
-                "initial_workspace_files": initial_workspace_files,
-                "conversation_generated_files": []
-            })
-
-        # known_files = initial files + files generated in previous messages
-        known_files = set(initial_workspace_files + conversation_generated_files)
-
         # Save user message to storage
         await self.storage.add_message(
             conversation_id=conversation_id,
@@ -131,6 +342,13 @@ class CoworkingAgent:
         if is_new_conversation:
             title = question[:50] + "..." if len(question) > 50 else question
             await self.storage.update_conversation_title(conversation_id, title)
+
+        session_state = await ensure_coworking_session_state(
+            storage=self.storage,
+            conversation_id=conversation_id,
+            workspace_path=workspace_path,
+            add_reset_notice_message=True,
+        )
 
         # Build message list: system + history + current question
         chat_messages = [system_message]
@@ -148,20 +366,26 @@ class CoworkingAgent:
 
         # Track state
         iteration = 0
-        generated_files = list(conversation_generated_files)
         final_response = ""
         citations = []
 
-        # Emit previous_files event so frontend can restore the file list
-        if conversation_generated_files:
-            previous_files_data = []
-            for f in conversation_generated_files:
-                try:
-                    fsize = os.path.getsize(os.path.join(workspace_path, f))
-                except Exception:
-                    fsize = 0
-                previous_files_data.append({"path": f, "size": fsize})
-            yield {"type": "previous_files", "files": previous_files_data}
+        previous_files_data = []
+        for file_path in session_state["generated_files"]:
+            try:
+                file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+            except Exception:
+                file_size = 0
+            previous_files_data.append({"path": file_path, "size": file_size})
+        yield {
+            "type": "previous_files",
+            "files": previous_files_data,
+            "deleted_files": session_state["deleted_files"],
+        }
+        if session_state["did_reset"]:
+            yield {
+                "type": "session_notice",
+                "message": session_state["reset_notice"],
+            }
 
         try:
             # === Planning + ReAct Loop ===
@@ -200,6 +424,18 @@ class CoworkingAgent:
                 # If streaming didn't give us tool_calls via chunks, do a non-streaming
                 # fallback to get the complete message with tool_calls
                 if not tool_calls:
+                    # Some models stop after producing a numbered plan on later turns.
+                    # Reprompt once to continue with tool execution instead of ending early.
+                    if _looks_like_plan_only_response(full_content) and iteration < max_iterations:
+                        chat_messages.append(AIMessage(content=full_content))
+                        chat_messages.append(HumanMessage(
+                            content=(
+                                "Continue by executing the plan now using the available tools. "
+                                "Do not restate the plan unless needed."
+                            )
+                        ))
+                        continue
+
                     # Check if there's an accumulated response with no tool calls = done
                     ai_msg = AIMessage(content=full_content)
                     chat_messages.append(ai_msg)
@@ -258,6 +494,8 @@ class CoworkingAgent:
                         "tool_input": spec.args
                     }
 
+                workspace_before = set(_list_workspace_files(workspace_path))
+
                 # Execute tools in parallel
                 results: List[ToolResult] = await execute_tools_parallel(
                     tool_map=tool_map,
@@ -270,7 +508,6 @@ class CoworkingAgent:
                 for result in results:
                     tc_info = tc_info_map.get(result.tool_call_id, {})
                     tool_name = tc_info.get("name", "unknown")
-                    tool_args = tc_info.get("args", {})
 
                     # Truncate very long results for display
                     display_result = result.content
@@ -284,40 +521,6 @@ class CoworkingAgent:
                         "success": result.success
                     }
 
-                    # Check for file creation events
-                    if tool_name == "write_file" and result.success:
-                        file_path = tool_args.get("file_path", "")
-                        try:
-                            full_path = os.path.join(workspace_path, file_path)
-                            file_size = os.path.getsize(full_path) if os.path.exists(full_path) else 0
-                        except Exception:
-                            file_size = 0
-                        if file_path not in known_files:
-                            generated_files.append(file_path)
-                            known_files.add(file_path)
-                        yield {
-                            "type": "file_created",
-                            "file_path": file_path,
-                            "file_size": file_size
-                        }
-
-                    # Check python_execute/bash_execute for file creation hints
-                    if tool_name in ("python_execute", "bash_execute") and result.success:
-                        # Scan workspace for new files after execution
-                        new_files = self._scan_for_new_files(workspace_path, known_files)
-                        for nf in new_files:
-                            generated_files.append(nf)
-                            known_files.add(nf)
-                            try:
-                                file_size = os.path.getsize(os.path.join(workspace_path, nf))
-                            except Exception:
-                                file_size = 0
-                            yield {
-                                "type": "file_created",
-                                "file_path": nf,
-                                "file_size": file_size
-                            }
-
                     # Add tool result to message history
                     tool_message = ToolMessage(
                         content=result.content,
@@ -328,6 +531,30 @@ class CoworkingAgent:
                     # Extract citations from search tool results
                     if "search" in tool_name.lower():
                         extract_citations_from_result(result.content, citations)
+
+                workspace_after = set(_list_workspace_files(workspace_path))
+                baseline_set = set(session_state["baseline_files"])
+                added_files = sorted(workspace_after - workspace_before)
+                removed_files = sorted(workspace_before - workspace_after)
+
+                for file_path in added_files:
+                    if file_path not in baseline_set:
+                        try:
+                            file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+                        except Exception:
+                            file_size = 0
+                        yield {
+                            "type": "file_created",
+                            "file_path": file_path,
+                            "file_size": file_size,
+                        }
+
+                for file_path in removed_files:
+                    if file_path in baseline_set:
+                        yield {
+                            "type": "file_deleted",
+                            "file_path": file_path,
+                        }
 
                 # Continue the ReAct loop (agent will process tool results)
 
@@ -351,13 +578,20 @@ class CoworkingAgent:
                     model=self.model_id
                 )
 
-            # Persist generated files to conversation metadata
-            await self.storage.update_conversation_metadata(conversation_id, {
-                "conversation_generated_files": generated_files
-            })
+            final_file_state = await recompute_coworking_session_deltas(
+                storage=self.storage,
+                conversation_id=conversation_id,
+                workspace_path=workspace_path,
+                baseline_files=session_state["baseline_files"],
+            )
 
-            # Only emit newly generated files (exclude those from previous messages)
-            new_generated_files = [f for f in generated_files if f not in conversation_generated_files]
+            final_generated_files = []
+            for file_path in final_file_state["generated_files"]:
+                try:
+                    file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+                except Exception:
+                    file_size = 0
+                final_generated_files.append({"path": file_path, "size": file_size})
 
             # Emit citations if any were collected
             if citations:
@@ -366,7 +600,8 @@ class CoworkingAgent:
             yield {
                 "type": "done",
                 "final_answer": final_response,
-                "generated_files": new_generated_files
+                "generated_files": final_generated_files,
+                "deleted_files": final_file_state["deleted_files"],
             }
 
         except Exception as e:
@@ -375,35 +610,6 @@ class CoworkingAgent:
                 "type": "error",
                 "error": str(e)
             }
-
-    def _scan_for_new_files(self, workspace_path: str, known_files: set) -> list:
-        """Scan workspace for files not in known_files set."""
-        new_files = []
-        try:
-            for root, dirs, files in os.walk(workspace_path):
-                # Skip hidden directories
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                for f in files:
-                    rel_path = os.path.relpath(os.path.join(root, f), workspace_path)
-                    if rel_path not in known_files and not f.startswith('.'):
-                        new_files.append(rel_path)
-        except Exception:
-            pass
-        return new_files
-
-    def _list_all_files(self, workspace_path: str) -> list:
-        """List all non-hidden files in workspace as relative paths."""
-        all_files = []
-        try:
-            for root, dirs, files in os.walk(workspace_path):
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                for f in files:
-                    if not f.startswith('.'):
-                        rel_path = os.path.relpath(os.path.join(root, f), workspace_path)
-                        all_files.append(rel_path)
-        except Exception:
-            pass
-        return all_files
 
     async def invoke(
         self,
@@ -424,13 +630,14 @@ class CoworkingAgent:
             web_search: Enable web search tools
 
         Returns:
-            Dict with final_answer and generated_files
+            Dict with final_answer, generated_files, and deleted_files
         """
-        result = {"final_answer": "", "generated_files": []}
+        result = {"final_answer": "", "generated_files": [], "deleted_files": []}
         async for event in self.stream(question, conversation_id, workspace_path, max_iterations, web_search):
             if event["type"] == "done":
                 result["final_answer"] = event.get("final_answer", "")
                 result["generated_files"] = event.get("generated_files", [])
+                result["deleted_files"] = event.get("deleted_files", [])
             elif event["type"] == "error":
                 result["final_answer"] = f"Error: {event.get('error', 'Unknown error')}"
         return result

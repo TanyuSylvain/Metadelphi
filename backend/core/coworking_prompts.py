@@ -44,5 +44,5 @@ Consider:
 - What code needs to be executed?
 - What is the logical order of operations?
 
-Respond with your plan as a numbered list in the same language as the user's latest message, unless the user explicitly asks you to switch languages, then begin executing it.
+Respond with your plan as a numbered list in the same language as the user's latest message, unless the user explicitly asks you to switch languages. After the plan, immediately execute it with tool calls in the same response whenever tools are needed. Do not stop after the plan. A plan-only response is only acceptable if the request can be fully answered without using any tool.
 """

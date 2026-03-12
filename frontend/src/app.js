@@ -799,6 +799,8 @@ export class ChatApp {
                 return;
             }
 
+            await this.restoreCoworkingSessionState(conversationInfo);
+
             // Load the full history if conversation exists
             const history = await this.apiClient.getConversationHistory(this.conversationId);
             if (history && history.messages && history.messages.length > 0) {
@@ -815,6 +817,33 @@ export class ChatApp {
         } catch (error) {
             // Something went wrong, but we can still continue
             console.log('Could not load conversation history:', error.message);
+        }
+    }
+
+    /**
+     * Restore coworking session file state for the current conversation if applicable.
+     * @param {Object} conversationInfo - Conversation metadata
+     */
+    async restoreCoworkingSessionState(conversationInfo) {
+        const workspacePath = this.coworkingConfig ? this.coworkingConfig.getWorkspacePath() : '';
+        const metadata = conversationInfo && conversationInfo.metadata ? conversationInfo.metadata : {};
+        const hasCoworkingState = Boolean(metadata.coworking_baseline_files);
+
+        if (!workspacePath || (!hasCoworkingState && conversationInfo.mode !== 'coworking')) {
+            return;
+        }
+
+        try {
+            const state = await this.apiClient.getCoworkingSessionState(this.conversationId, workspacePath);
+            if (this.toolExecutionViewer) {
+                this.toolExecutionViewer.setWorkspacePath(workspacePath);
+                this.toolExecutionViewer.setFileState(
+                    state.generated_files || [],
+                    state.deleted_files || []
+                );
+            }
+        } catch (error) {
+            console.warn('Could not restore coworking session state:', error);
         }
     }
 
@@ -1160,9 +1189,9 @@ export class ChatApp {
                 25,
                 this.isWebSearchEnabled,
                 {
-                    onPreviousFiles: (files) => {
+                    onPreviousFiles: (files, deletedFiles) => {
                         if (this.toolExecutionViewer) {
-                            this.toolExecutionViewer.setGeneratedFiles(files);
+                            this.toolExecutionViewer.setFileState(files, deletedFiles);
                         }
                     },
                     onPlan: (steps) => {
@@ -1201,6 +1230,16 @@ export class ChatApp {
                             this.toolExecutionViewer.addFileCreated(filePath, fileSize);
                         }
                     },
+                    onFileDeleted: (filePath) => {
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.addFileDeleted(filePath);
+                        }
+                    },
+                    onSessionNotice: (notice) => {
+                        if (notice) {
+                            this.messageComponent.addSystemMessage(notice);
+                        }
+                    },
                     onResponseChunk: (content) => {
                         fullResponse += content;
                         if (fullResponse.includes('<think')) {
@@ -1220,8 +1259,11 @@ export class ChatApp {
                     onCitations: (citations) => {
                         coworkingCitations = citations;
                     },
-                    onDone: (finalAnswer, generatedFiles) => {
+                    onDone: (finalAnswer, generatedFiles, deletedFiles) => {
                         this.messageComponent.removeTypingIndicator(typingIndicator);
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.setFileState(generatedFiles, deletedFiles);
+                        }
                         if (finalAnswer) {
                             const messageEl = this.messageComponent.addAssistantMessage(
                                 finalAnswer,

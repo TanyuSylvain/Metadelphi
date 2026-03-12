@@ -481,7 +481,9 @@ export class APIClient {
     _handleCoworkingEvent(event, callbacks) {
         switch (event.type) {
             case 'previous_files':
-                if (callbacks.onPreviousFiles) callbacks.onPreviousFiles(event.files);
+                if (callbacks.onPreviousFiles) {
+                    callbacks.onPreviousFiles(event.files, event.deleted_files || []);
+                }
                 break;
             case 'plan':
                 if (callbacks.onPlan) callbacks.onPlan(event.steps);
@@ -498,6 +500,12 @@ export class APIClient {
             case 'file_created':
                 if (callbacks.onFileCreated) callbacks.onFileCreated(event.file_path, event.file_size);
                 break;
+            case 'file_deleted':
+                if (callbacks.onFileDeleted) callbacks.onFileDeleted(event.file_path);
+                break;
+            case 'session_notice':
+                if (callbacks.onSessionNotice) callbacks.onSessionNotice(event.message);
+                break;
             case 'response_chunk':
                 if (callbacks.onResponseChunk) callbacks.onResponseChunk(event.content);
                 break;
@@ -505,7 +513,13 @@ export class APIClient {
                 if (callbacks.onCitations) callbacks.onCitations(event.citations);
                 break;
             case 'done':
-                if (callbacks.onDone) callbacks.onDone(event.final_answer, event.generated_files);
+                if (callbacks.onDone) {
+                    callbacks.onDone(
+                        event.final_answer,
+                        event.generated_files || [],
+                        event.deleted_files || []
+                    );
+                }
                 break;
             case 'error':
                 if (callbacks.onError) callbacks.onError(event.error);
@@ -618,6 +632,32 @@ export class APIClient {
             return await response.json();
         } catch (error) {
             console.error('Error opening file:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Validate and restore coworking session file state.
+     * @param {string} conversationId - Conversation ID
+     * @param {string} workspacePath - Absolute workspace directory path
+     * @returns {Promise<Object>} Current coworking session file state
+     */
+    async getCoworkingSessionState(conversationId, workspacePath) {
+        try {
+            const params = new URLSearchParams({
+                conversation_id: conversationId,
+                workspace_path: workspacePath
+            });
+            const response = await fetch(
+                `${this.baseURL}/chat/coworking/session-state?${params.toString()}`
+            );
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to load coworking session state');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error loading coworking session state:', error);
             throw error;
         }
     }

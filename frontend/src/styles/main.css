@@ -2164,6 +2164,10 @@ body {
     font-size: 0.85rem;
 }
 
+.file-item.deleted {
+    color: #9a5b5b;
+}
+
 .file-icon {
     flex-shrink: 0;
 }
@@ -2204,6 +2208,13 @@ body {
 .file-size {
     color: #999;
     font-size: 0.78rem;
+}
+
+.file-deleted-path {
+    color: inherit;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    word-break: break-word;
 }
 
 /* ========================================

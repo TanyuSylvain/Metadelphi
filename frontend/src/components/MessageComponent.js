@@ -666,6 +666,8 @@ export class MessageComponent {
                 } else {
                     this.addAssistantMessage(msg.content);
                 }
+            } else if (msg.role === 'system') {
+                this.addSystemMessage(msg.content);
             }
         });
     }

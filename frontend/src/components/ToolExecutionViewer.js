@@ -10,6 +10,7 @@ export class ToolExecutionViewer {
         this.planSteps = [];
         this.toolCalls = [];
         this.generatedFiles = [];
+        this.deletedFiles = [];
         this.workspacePath = '';
         this.baseURL = 'http://localhost:8000';
     }
@@ -22,18 +23,30 @@ export class ToolExecutionViewer {
         this.planSteps = [];
         this.toolCalls = [];
         this.generatedFiles = [];
+        this.deletedFiles = [];
         this.render();
     }
 
     clearForNewMessage() {
         this.planSteps = [];
         this.toolCalls = [];
-        // Keep generatedFiles across messages
+        // Keep session-level file state across messages
         this.render();
     }
 
     setGeneratedFiles(files) {
-        this.generatedFiles = files.map(f => ({ path: f.path, size: f.size }));
+        this.setFileState(files, this.deletedFiles);
+    }
+
+    setDeletedFiles(files) {
+        this.setFileState(this.generatedFiles, files);
+    }
+
+    setFileState(generatedFiles = [], deletedFiles = []) {
+        this.generatedFiles = generatedFiles.map(f => ({ path: f.path, size: f.size }));
+        this.deletedFiles = deletedFiles.map(file =>
+            typeof file === 'string' ? { path: file } : { path: file.path }
+        );
         this.render();
     }
 
@@ -78,10 +91,25 @@ export class ToolExecutionViewer {
 
     addFileCreated(filePath, fileSize) {
         // Avoid duplicates
-        if (!this.generatedFiles.find(f => f.path === filePath)) {
-            this.generatedFiles.push({ path: filePath, size: fileSize });
-            this.render();
+        const deletedIdx = this.deletedFiles.findIndex(f => f.path === filePath);
+        if (deletedIdx >= 0) {
+            this.deletedFiles.splice(deletedIdx, 1);
         }
+        const existing = this.generatedFiles.find(f => f.path === filePath);
+        if (existing) {
+            existing.size = fileSize;
+        } else {
+            this.generatedFiles.push({ path: filePath, size: fileSize });
+        }
+        this.render();
+    }
+
+    addFileDeleted(filePath) {
+        this.generatedFiles = this.generatedFiles.filter(f => f.path !== filePath);
+        if (!this.deletedFiles.find(f => f.path === filePath)) {
+            this.deletedFiles.push({ path: filePath });
+        }
+        this.render();
     }
 
     render() {
@@ -144,6 +172,18 @@ export class ToolExecutionViewer {
                     <span class="file-open-link" data-file-path="${this.escapeHtml(file.path)}">${this.escapeHtml(file.path)}</span>
                     <span class="file-size">(${sizeStr})</span>
                     <a class="file-download-btn" href="${downloadUrl}" target="_blank" title="Download">&#x2B07;</a>
+                </div>`;
+            });
+            html += '</div>';
+        }
+
+        if (this.deletedFiles.length > 0) {
+            html += '<div class="tool-section">';
+            html += '<div class="tool-section-title">Deleted Files</div>';
+            this.deletedFiles.forEach(file => {
+                html += `<div class="file-item deleted">
+                    <span class="file-icon">&#x1F5D1;</span>
+                    <span class="file-deleted-path">${this.escapeHtml(file.path)}</span>
                 </div>`;
             });
             html += '</div>';
