@@ -132,14 +132,17 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
     Send a message and get a streaming coworking agent response.
 
     Streams Server-Sent Events (SSE) with event types:
-    - plan: Workflow plan steps
-    - thinking_chunk: Agent reasoning token
+    - plan_ready: Parsed workflow plan
+    - round_start: Start of a ReAct round
+    - reasoning_chunk: User-facing worklog token for a round
     - tool_start: Before tool execution
     - tool_result: After tool execution
+    - round_complete: ReAct round completed
     - file_created: File written to workspace
     - file_deleted: File removed from workspace during the round
     - session_notice: Session-level file tracking notice for the chat window
-    - response_chunk: Final response token
+    - final_start: Final-answer phase begins
+    - final_chunk: Final response token
     - done: Workflow complete
     - error: Error occurred
     """

@@ -1703,6 +1703,148 @@ body {
     /* Inherits existing message styles */
 }
 
+/* ========================================
+   Coworking Transcript
+   ======================================== */
+
+.message.assistant.coworking-transcript {
+    min-width: min(80%, 780px);
+    background: linear-gradient(180deg, #edf2f7 0%, #e6edf5 100%);
+}
+
+.coworking-transcript-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
+    padding-right: 2.75rem;
+}
+
+.coworking-section {
+    border-radius: 0.85rem;
+    padding: 0.9rem 1rem;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(90, 110, 130, 0.14);
+}
+
+.coworking-section-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #637381;
+    margin-bottom: 0.55rem;
+}
+
+.coworking-plan-list {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.coworking-plan-list li + li {
+    margin-top: 0.35rem;
+}
+
+.coworking-plan-item > *:first-child {
+    margin-top: 0;
+}
+
+.coworking-plan-item > *:last-child {
+    margin-bottom: 0;
+}
+
+.coworking-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.coworking-round {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 0.85rem;
+}
+
+.coworking-round-rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+.coworking-round-dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 0.35rem;
+    border-radius: 999px;
+    background: #6c7a89;
+    box-shadow: 0 0 0 4px rgba(108, 122, 137, 0.12);
+    z-index: 1;
+}
+
+.coworking-round-dot.running {
+    background: #1f6feb;
+    box-shadow: 0 0 0 4px rgba(31, 111, 235, 0.12);
+    animation: coworking-dot-pulse 1.15s ease-in-out infinite;
+}
+
+.coworking-round-dot.done {
+    background: #2f855a;
+    box-shadow: 0 0 0 4px rgba(47, 133, 90, 0.12);
+}
+
+.coworking-round-dot.error {
+    background: #c53030;
+    box-shadow: 0 0 0 4px rgba(197, 48, 48, 0.12);
+}
+
+.coworking-round-line {
+    position: absolute;
+    top: 1rem;
+    bottom: -1rem;
+    width: 2px;
+    background: linear-gradient(180deg, rgba(108, 122, 137, 0.35), rgba(108, 122, 137, 0.12));
+    border-radius: 999px;
+}
+
+.coworking-round-body {
+    min-width: 0;
+}
+
+.coworking-reasoning-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #243b53;
+}
+
+.coworking-round-pending,
+.coworking-final-answer-pending,
+.coworking-empty-state {
+    color: #52606d;
+}
+
+.coworking-final-answer-content {
+    min-width: 0;
+    margin-top: 0.15rem;
+    padding-top: 0.95rem;
+    border-top: 1px solid rgba(90, 110, 130, 0.16);
+}
+
+.coworking-final-answer-content.standalone {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+@keyframes coworking-dot-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(0.78);
+        opacity: 0.45;
+    }
+}
+
 /* Issues */
 .issues-list {
     display: flex;

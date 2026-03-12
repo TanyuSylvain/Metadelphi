@@ -17,6 +17,8 @@ export class MessageComponent {
         this.messageResponseContents = new Map();
         // Store citations per message for re-rendering support
         this.messageCitations = new Map();
+        // Store coworking transcript state for re-rendering during streaming
+        this.coworkingTranscripts = new Map();
         // Current conversation ID for debate message persistence
         this.conversationId = null;
     }
@@ -157,6 +159,18 @@ export class MessageComponent {
     }
 
     /**
+     * Create an assistant message shell for coworking transcript rendering.
+     * @returns {HTMLElement} Message element
+     */
+    createCoworkingTranscriptMessage() {
+        const messageEl = this.addMessage('', 'assistant');
+        const msgId = messageEl.dataset.messageId || Date.now().toString() + Math.random().toString();
+        messageEl.dataset.messageId = msgId;
+        messageEl.classList.add('coworking-transcript');
+        return messageEl;
+    }
+
+    /**
      * Add an error message
      * @param {string} content - Error message
      * @returns {HTMLElement} Message element
@@ -269,6 +283,45 @@ export class MessageComponent {
         // Add copy button if content exists and button doesn't
         if (content && msgId && !messageEl.querySelector('.message-copy-btn')) {
             messageEl.appendChild(this.createCopyButton(msgId));
+        }
+
+        this.scrollToBottom();
+    }
+
+    /**
+     * Update a coworking transcript message with plan, rounds, and final answer.
+     * @param {HTMLElement} messageEl - Message element
+     * @param {Object} transcript - Transcript state
+     * @param {boolean} isMarkdown - Whether to render markdown sections
+     */
+    updateCoworkingTranscript(messageEl, transcript, isMarkdown = false) {
+        if (!messageEl || !transcript) return;
+
+        const msgId = messageEl.dataset.messageId;
+        if (msgId) {
+            const transcriptCopy = typeof structuredClone === 'function'
+                ? structuredClone(transcript)
+                : JSON.parse(JSON.stringify(transcript));
+            this.coworkingTranscripts.set(msgId, transcriptCopy);
+            this.messageContents.set(msgId, transcript.finalAnswer || '');
+            this.messageResponseContents.set(msgId, transcript.finalAnswer || '');
+            if (transcript.citations) {
+                this.messageCitations.set(msgId, transcript.citations);
+            }
+        }
+
+        messageEl.classList.add('coworking-transcript');
+        messageEl.innerHTML = this.renderCoworkingTranscript(transcript, isMarkdown);
+
+        if (msgId && transcript.finalAnswer) {
+            messageEl.appendChild(this.createCopyButton(msgId));
+        }
+
+        if (transcript.citations && transcript.citations.length > 0) {
+            const finalAnswerEl = messageEl.querySelector('.coworking-final-answer-content');
+            if (finalAnswerEl) {
+                this.applyCitations(finalAnswerEl, transcript.citations);
+            }
         }
 
         this.scrollToBottom();
@@ -398,6 +451,7 @@ export class MessageComponent {
         this.messageContents.clear();
         this.messageResponseContents.clear();
         this.messageCitations.clear();
+        this.coworkingTranscripts.clear();
     }
 
     /**
@@ -409,6 +463,15 @@ export class MessageComponent {
         assistantMessages.forEach(messageEl => {
             const msgId = messageEl.dataset.messageId;
             if (msgId && this.messageContents.has(msgId)) {
+                if (this.coworkingTranscripts.has(msgId)) {
+                    this.updateCoworkingTranscript(
+                        messageEl,
+                        this.coworkingTranscripts.get(msgId),
+                        isMarkdown
+                    );
+                    return;
+                }
+
                 const content = this.messageContents.get(msgId);
 
                 // Handle debate-answer messages differently (preserve badge and copy button)
@@ -670,5 +733,120 @@ export class MessageComponent {
                 this.addSystemMessage(msg.content);
             }
         });
+    }
+
+    /**
+     * Render the complete coworking transcript bubble.
+     * @param {Object} transcript - Transcript state
+     * @param {boolean} isMarkdown - Whether to render markdown sections
+     * @returns {string} HTML string
+     */
+    renderCoworkingTranscript(transcript, isMarkdown = true) {
+        const planSteps = Array.isArray(transcript.planSteps) ? transcript.planSteps : [];
+        const rounds = Array.isArray(transcript.rounds) ? transcript.rounds : [];
+        const hasTimeline = rounds.length > 0;
+        const hasPlan = planSteps.length > 0;
+        const hasFinal = Boolean(transcript.finalStarted || transcript.finalAnswer);
+
+        let html = '<div class="coworking-transcript-shell">';
+
+        if (hasPlan) {
+            html += '<section class="coworking-section coworking-plan">';
+            html += '<div class="coworking-section-label">Plan</div>';
+            html += '<ol class="coworking-plan-list">';
+            planSteps.forEach(step => {
+                const description = step.description || '';
+                if (isMarkdown) {
+                    html += `<li class="coworking-plan-item markdown">${this.renderer.render(description)}</li>`;
+                } else {
+                    html += `<li class="coworking-plan-item">${this._escapeHtml(description)}</li>`;
+                }
+            });
+            html += '</ol>';
+            html += '</section>';
+        }
+
+        if (hasTimeline) {
+            html += '<section class="coworking-section coworking-worklog">';
+            html += '<div class="coworking-section-label">Worklog</div>';
+            html += '<div class="coworking-timeline">';
+            rounds.forEach((round, index) => {
+                html += this.renderCoworkingRound(round, index === rounds.length - 1);
+            });
+            html += '</div>';
+            html += '</section>';
+        }
+
+        if (hasFinal) {
+            const finalAnswerClass = hasPlan || hasTimeline
+                ? 'coworking-final-answer-content'
+                : 'coworking-final-answer-content standalone';
+            html += `<div class="${finalAnswerClass}">`;
+            if (transcript.finalAnswer) {
+                if (isMarkdown) {
+                    html += this.renderer.render(transcript.finalAnswer);
+                } else {
+                    html += `<div style="white-space: pre-wrap;">${this._escapeHtml(transcript.finalAnswer)}</div>`;
+                }
+            } else {
+                html += '<div class="coworking-final-answer-pending"><span class="typing">Drafting</span></div>';
+            }
+            html += '</div>';
+        }
+
+        if (!hasPlan && !hasTimeline && !hasFinal) {
+            html += '<div class="coworking-empty-state"><span class="typing">Planning</span></div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    /**
+     * Render one ReAct round in the coworking timeline.
+     * @param {Object} round - Round state
+     * @param {boolean} isLast - Whether this is the last workflow item
+     * @returns {string} HTML string
+     */
+    renderCoworkingRound(round, isLast = false) {
+        const roundStatus = round.status || 'running';
+        const reasoning = round.reasoning || '';
+        const tools = Array.isArray(round.toolCalls) ? round.toolCalls : [];
+        const fallbackText = this.getCoworkingRoundFallbackText(tools);
+
+        let html = `<article class="coworking-round ${roundStatus}">`;
+        html += '<div class="coworking-round-rail">';
+        html += `<span class="coworking-round-dot ${roundStatus}"></span>`;
+        if (!isLast) {
+            html += '<span class="coworking-round-line"></span>';
+        }
+        html += '</div>';
+        html += '<div class="coworking-round-body">';
+        if (reasoning || fallbackText) {
+            html += `<div class="coworking-reasoning-text">${this._escapeHtml(reasoning || fallbackText)}</div>`;
+        } else if (roundStatus === 'running') {
+            html += '<div class="coworking-round-pending"><span class="typing">Working</span></div>';
+        }
+
+        html += '</div>';
+        html += '</article>';
+        return html;
+    }
+
+    /**
+     * Build fallback text when a round has tool calls but no visible reasoning text.
+     * @param {Array} tools - Tool state list
+     * @returns {string} Fallback text
+     */
+    getCoworkingRoundFallbackText(tools) {
+        if (!Array.isArray(tools) || tools.length === 0) {
+            return '';
+        }
+
+        if (tools.length === 1) {
+            return `calling tool (${tools[0].name || 'unknown'})`;
+        }
+
+        return `calling tools (${tools.map(tool => tool.name || 'unknown').join(', ')})`;
     }
 }

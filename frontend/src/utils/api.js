@@ -486,16 +486,41 @@ export class APIClient {
                 }
                 break;
             case 'plan':
-                if (callbacks.onPlan) callbacks.onPlan(event.steps);
+            case 'plan_ready':
+                if (callbacks.onPlanReady) callbacks.onPlanReady(event.steps || []);
                 break;
             case 'thinking_chunk':
-                if (callbacks.onThinkingChunk) callbacks.onThinkingChunk(event.content);
+                if (callbacks.onReasoningChunk) callbacks.onReasoningChunk(1, event.content);
+                break;
+            case 'round_start':
+                if (callbacks.onRoundStart) callbacks.onRoundStart(event.round);
+                break;
+            case 'reasoning_chunk':
+                if (callbacks.onReasoningChunk) callbacks.onReasoningChunk(event.round, event.content);
                 break;
             case 'tool_start':
-                if (callbacks.onToolStart) callbacks.onToolStart(event.tool_name, event.tool_input);
+                if (callbacks.onToolStart) {
+                    callbacks.onToolStart(
+                        event.round || 1,
+                        event.tool_name,
+                        event.tool_input,
+                        event.tool_call_id || null
+                    );
+                }
                 break;
             case 'tool_result':
-                if (callbacks.onToolResult) callbacks.onToolResult(event.tool_name, event.output, event.success);
+                if (callbacks.onToolResult) {
+                    callbacks.onToolResult(
+                        event.round || 1,
+                        event.tool_name,
+                        event.output,
+                        event.success,
+                        event.tool_call_id || null
+                    );
+                }
+                break;
+            case 'round_complete':
+                if (callbacks.onRoundComplete) callbacks.onRoundComplete(event.round);
                 break;
             case 'file_created':
                 if (callbacks.onFileCreated) callbacks.onFileCreated(event.file_path, event.file_size);
@@ -507,7 +532,11 @@ export class APIClient {
                 if (callbacks.onSessionNotice) callbacks.onSessionNotice(event.message);
                 break;
             case 'response_chunk':
-                if (callbacks.onResponseChunk) callbacks.onResponseChunk(event.content);
+            case 'final_chunk':
+                if (callbacks.onFinalChunk) callbacks.onFinalChunk(event.content);
+                break;
+            case 'final_start':
+                if (callbacks.onFinalStart) callbacks.onFinalStart();
                 break;
             case 'citations':
                 if (callbacks.onCitations) callbacks.onCitations(event.citations);

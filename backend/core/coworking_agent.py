@@ -114,6 +114,33 @@ def _looks_like_plan_only_response(text: str) -> bool:
     return numbered_lines >= 2 or (numbered_lines >= 1 and has_plan_language)
 
 
+def _extract_plan_steps(text: str) -> List[Dict[str, Any]]:
+    """Parse a numbered plan into display steps."""
+    if not text:
+        return []
+
+    steps = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = re.match(r"^(\d+)[\.\)、)]\s*(.+)$", stripped)
+        if match:
+            steps.append({
+                "step_number": int(match.group(1)),
+                "description": match.group(2).strip(),
+            })
+
+    if steps:
+        return steps
+
+    return [
+        {"step_number": idx + 1, "description": line.strip()}
+        for idx, line in enumerate(text.splitlines())
+        if line.strip()
+    ]
+
+
 def _extract_tracking_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Extract coworking tracking state from conversation metadata."""
     baseline_files = metadata.get(COWORKING_BASELINE_FILES_KEY)
@@ -303,9 +330,9 @@ class CoworkingAgent:
             web_search: Enable web search tools
 
         Yields:
-            Dict events: plan, thinking_chunk, tool_start, tool_result,
-                        file_created, file_deleted, session_notice,
-                        response_chunk, done, error
+            Dict events: plan_ready, round_start, reasoning_chunk, tool_start,
+                        tool_result, round_complete, file_created, file_deleted,
+                        session_notice, final_start, final_chunk, done, error
         """
         # Ensure workspace exists
         os.makedirs(workspace_path, exist_ok=True)
@@ -368,6 +395,7 @@ class CoworkingAgent:
         iteration = 0
         final_response = ""
         citations = []
+        plan_emitted = False
 
         previous_files_data = []
         for file_path in session_state["generated_files"]:
@@ -395,6 +423,9 @@ class CoworkingAgent:
                 # Stream agent response token-by-token
                 full_content = ""
                 tool_calls = []
+                buffered_text = ""
+                saw_tool_call_chunks = False
+                round_started = False
 
                 async for chunk in llm_with_tools.astream(chat_messages):
                     # Accumulate content
@@ -402,13 +433,43 @@ class CoworkingAgent:
                         text = TextProcessor.extract_text_content(chunk.content)
                         if text:
                             full_content += text
-                            if iteration == 1 and not tool_calls:
-                                yield {"type": "thinking_chunk", "content": text}
+                            if saw_tool_call_chunks:
+                                if not round_started:
+                                    yield {"type": "round_start", "round": iteration}
+                                    round_started = True
+                                yield {
+                                    "type": "reasoning_chunk",
+                                    "round": iteration,
+                                    "content": text,
+                                }
                             else:
-                                yield {"type": "response_chunk", "content": text}
+                                buffered_text += text
 
                     # Accumulate tool calls from streaming chunks
                     if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
+                        if not saw_tool_call_chunks:
+                            saw_tool_call_chunks = True
+                            if iteration == 1:
+                                plan_text = buffered_text.strip()
+                                if plan_text and not plan_emitted:
+                                    yield {
+                                        "type": "plan_ready",
+                                        "steps": _extract_plan_steps(plan_text),
+                                        "raw_text": plan_text,
+                                    }
+                                    plan_emitted = True
+                                buffered_text = ""
+                            else:
+                                yield {"type": "round_start", "round": iteration}
+                                round_started = True
+                                if buffered_text:
+                                    yield {
+                                        "type": "reasoning_chunk",
+                                        "round": iteration,
+                                        "content": buffered_text,
+                                    }
+                                    buffered_text = ""
+
                         for tc_chunk in chunk.tool_call_chunks:
                             # Find or create the tool call entry
                             tc_idx = tc_chunk.get("index", 0)
@@ -427,6 +488,13 @@ class CoworkingAgent:
                     # Some models stop after producing a numbered plan on later turns.
                     # Reprompt once to continue with tool execution instead of ending early.
                     if _looks_like_plan_only_response(full_content) and iteration < max_iterations:
+                        if not plan_emitted and full_content.strip():
+                            yield {
+                                "type": "plan_ready",
+                                "steps": _extract_plan_steps(full_content.strip()),
+                                "raw_text": full_content.strip(),
+                            }
+                            plan_emitted = True
                         chat_messages.append(AIMessage(content=full_content))
                         chat_messages.append(HumanMessage(
                             content=(
@@ -439,7 +507,10 @@ class CoworkingAgent:
                     # Check if there's an accumulated response with no tool calls = done
                     ai_msg = AIMessage(content=full_content)
                     chat_messages.append(ai_msg)
-                    final_response = full_content
+                    final_response = TextProcessor.convert_math_delimiters(full_content)
+                    if final_response:
+                        yield {"type": "final_start"}
+                        yield {"type": "final_chunk", "content": final_response}
                     break
 
                 # We have tool calls — build the proper AIMessage with tool_calls
@@ -460,7 +531,10 @@ class CoworkingAgent:
                     # No valid tool calls found, treat as final response
                     ai_msg = AIMessage(content=full_content)
                     chat_messages.append(ai_msg)
-                    final_response = full_content
+                    final_response = TextProcessor.convert_math_delimiters(full_content)
+                    if final_response:
+                        yield {"type": "final_start"}
+                        yield {"type": "final_chunk", "content": final_response}
                     break
 
                 # Append AI message with tool calls to history
@@ -488,10 +562,15 @@ class CoworkingAgent:
 
                 # Yield tool_start events for all tools upfront
                 for spec in tool_specs:
+                    if not round_started:
+                        yield {"type": "round_start", "round": iteration}
+                        round_started = True
                     yield {
                         "type": "tool_start",
+                        "round": iteration,
                         "tool_name": spec.name,
-                        "tool_input": spec.args
+                        "tool_input": spec.args,
+                        "tool_call_id": spec.id,
                     }
 
                 workspace_before = set(_list_workspace_files(workspace_path))
@@ -516,9 +595,11 @@ class CoworkingAgent:
 
                     yield {
                         "type": "tool_result",
+                        "round": iteration,
                         "tool_name": tool_name,
                         "output": display_result,
-                        "success": result.success
+                        "success": result.success,
+                        "tool_call_id": result.tool_call_id,
                     }
 
                     # Add tool result to message history
@@ -556,11 +637,19 @@ class CoworkingAgent:
                             "file_path": file_path,
                         }
 
+                if round_started:
+                    yield {"type": "round_complete", "round": iteration}
+
                 # Continue the ReAct loop (agent will process tool results)
 
             else:
                 # Hit max iterations
-                final_response = full_content or "Reached maximum iteration limit."
+                final_response = TextProcessor.convert_math_delimiters(
+                    full_content or "Reached maximum iteration limit."
+                )
+                if final_response:
+                    yield {"type": "final_start"}
+                    yield {"type": "final_chunk", "content": final_response}
                 yield {
                     "type": "error",
                     "error": f"Reached maximum of {max_iterations} iterations"

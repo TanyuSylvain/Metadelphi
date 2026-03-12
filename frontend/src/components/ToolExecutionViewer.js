@@ -7,7 +7,6 @@ export class ToolExecutionViewer {
     constructor(containerElement, apiClient) {
         this.container = containerElement;
         this.apiClient = apiClient;
-        this.planSteps = [];
         this.toolCalls = [];
         this.generatedFiles = [];
         this.deletedFiles = [];
@@ -20,7 +19,6 @@ export class ToolExecutionViewer {
     }
 
     clear() {
-        this.planSteps = [];
         this.toolCalls = [];
         this.generatedFiles = [];
         this.deletedFiles = [];
@@ -28,7 +26,6 @@ export class ToolExecutionViewer {
     }
 
     clearForNewMessage() {
-        this.planSteps = [];
         this.toolCalls = [];
         // Keep session-level file state across messages
         this.render();
@@ -54,17 +51,10 @@ export class ToolExecutionViewer {
         this.workspacePath = path;
     }
 
-    setPlan(steps) {
-        this.planSteps = steps.map((s, i) => ({
-            step_number: s.step_number || i + 1,
-            description: s.description || s,
-            status: 'pending'
-        }));
-        this.render();
-    }
-
-    addToolStart(toolName, toolInput) {
+    addToolStart(toolName, toolInput, round = null, toolCallId = null) {
         this.toolCalls.push({
+            id: toolCallId,
+            round,
             name: toolName,
             input: toolInput,
             output: null,
@@ -75,16 +65,32 @@ export class ToolExecutionViewer {
         this.scrollToBottom();
     }
 
-    addToolResult(toolName, output, success) {
-        // Update the most recent matching tool call
-        for (let i = this.toolCalls.length - 1; i >= 0; i--) {
-            if (this.toolCalls[i].name === toolName && this.toolCalls[i].status === 'running') {
-                this.toolCalls[i].output = output;
-                this.toolCalls[i].success = success;
-                this.toolCalls[i].status = success ? 'done' : 'error';
-                break;
+    addToolResult(toolName, output, success, round = null, toolCallId = null) {
+        let target = null;
+
+        if (toolCallId) {
+            target = this.toolCalls.find(tc => tc.id === toolCallId);
+        }
+
+        if (!target) {
+            for (let i = this.toolCalls.length - 1; i >= 0; i--) {
+                if (
+                    this.toolCalls[i].name === toolName &&
+                    this.toolCalls[i].status === 'running' &&
+                    (round === null || this.toolCalls[i].round === round)
+                ) {
+                    target = this.toolCalls[i];
+                    break;
+                }
             }
         }
+
+        if (target) {
+            target.output = output;
+            target.success = success;
+            target.status = success ? 'done' : 'error';
+        }
+
         this.render();
         this.scrollToBottom();
     }
@@ -114,21 +120,6 @@ export class ToolExecutionViewer {
 
     render() {
         let html = '';
-
-        // Plan section
-        if (this.planSteps.length > 0) {
-            html += '<div class="tool-section">';
-            html += '<div class="tool-section-title">Plan</div>';
-            this.planSteps.forEach(step => {
-                const icon = step.status === 'done' ? '&#x2705;' :
-                             step.status === 'active' ? '&#x1F504;' : '&#x2B55;';
-                html += `<div class="plan-step ${step.status}">
-                    <span class="plan-step-icon">${icon}</span>
-                    <span class="plan-step-text">${step.step_number}. ${this.escapeHtml(step.description)}</span>
-                </div>`;
-            });
-            html += '</div>';
-        }
 
         // Tool calls section
         if (this.toolCalls.length > 0) {

@@ -22,7 +22,7 @@ You have the following tools:
 
 ## Guidelines
 
-1. **Plan first**: Before executing, think about the steps needed to accomplish the task.
+1. **Plan first**: Before executing, produce a concise user-facing plan.
 2. **Use tools methodically**: Execute one logical step at a time. Check outputs before proceeding.
 3. **Check before install**: Always use `check_package` before `install_package`. Only install if the package is not already available.
 4. **Document generation**: For PDF, DOCX, XLSX files:
@@ -34,6 +34,7 @@ You have the following tools:
 6. **Report results**: After completing the task, summarize what was done and list any files created.
 7. **File paths**: Always use paths relative to the workspace root.
 8. **Language consistency**: Reply in the same language as the user's latest message unless the user explicitly asks you to switch languages. Keep the plan, progress updates, final answer, and any user-facing file content in that language by default.
+9. **Visible worklog, not hidden reasoning**: When giving progress text between tool calls, write short user-facing worklog lines about what you are doing. Do not dump private chain-of-thought.
 """
 
 COWORKING_PLANNING_PROMPT = """Analyze the user's request and create a step-by-step plan.
@@ -44,5 +45,10 @@ Consider:
 - What code needs to be executed?
 - What is the logical order of operations?
 
-Respond with your plan as a numbered list in the same language as the user's latest message, unless the user explicitly asks you to switch languages. After the plan, immediately execute it with tool calls in the same response whenever tools are needed. Do not stop after the plan. A plan-only response is only acceptable if the request can be fully answered without using any tool.
+Output format rules:
+- First turn before any tool call: write only a concise numbered plan for the user.
+- If you continue with more tool rounds after tool results, begin that turn with 1-2 short user-facing worklog lines before any new tool calls.
+- Reserve the final turn for the final answer only.
+
+Respond in the same language as the user's latest message, unless the user explicitly asks you to switch languages. After the first-turn plan, immediately execute it with tool calls in the same response whenever tools are needed. A plan-only response is only acceptable if the request can be fully answered without using any tool.
 """

@@ -1173,13 +1173,41 @@ export class ChatApp {
             this.toolExecutionViewer.setWorkspacePath(workspacePath);
         }
 
-        // Show typing indicator
-        const typingIndicator = this.messageComponent.showTypingIndicator();
+        const transcriptMessage = this.messageComponent.createCoworkingTranscriptMessage();
+        const transcriptState = {
+            planSteps: [],
+            rounds: [],
+            finalStarted: false,
+            finalAnswer: '',
+            citations: []
+        };
+
+        const renderTranscript = () => {
+            this.messageComponent.updateCoworkingTranscript(
+                transcriptMessage,
+                transcriptState,
+                this.isMarkdownEnabled
+            );
+        };
+
+        const ensureRound = (roundNumber) => {
+            let round = transcriptState.rounds.find(item => item.round === roundNumber);
+            if (!round) {
+                round = {
+                    round: roundNumber,
+                    reasoning: '',
+                    toolCalls: [],
+                    status: 'running'
+                };
+                transcriptState.rounds.push(round);
+                transcriptState.rounds.sort((a, b) => a.round - b.round);
+            }
+            return round;
+        };
+
+        renderTranscript();
 
         try {
-            let fullResponse = '';
-            let coworkingCitations = null;
-
             await this.apiClient.streamCoworkingChat(
                 message,
                 this.conversationId,
@@ -1194,36 +1222,63 @@ export class ChatApp {
                             this.toolExecutionViewer.setFileState(files, deletedFiles);
                         }
                     },
-                    onPlan: (steps) => {
+                    onPlanReady: (steps) => {
+                        transcriptState.planSteps = steps || [];
+                        renderTranscript();
+                    },
+                    onRoundStart: (round) => {
+                        ensureRound(round).status = 'running';
+                        renderTranscript();
+                    },
+                    onReasoningChunk: (round, content) => {
+                        const roundState = ensureRound(round);
+                        roundState.reasoning += content;
+                        renderTranscript();
+                    },
+                    onToolStart: (round, toolName, toolInput, toolCallId) => {
+                        const roundState = ensureRound(round);
+                        roundState.toolCalls.push({
+                            id: toolCallId,
+                            name: toolName,
+                            input: toolInput,
+                            output: '',
+                            success: null,
+                            status: 'running'
+                        });
+                        renderTranscript();
                         if (this.toolExecutionViewer) {
-                            this.toolExecutionViewer.setPlan(steps);
+                            this.toolExecutionViewer.addToolStart(toolName, toolInput, round, toolCallId);
                         }
                     },
-                    onThinkingChunk: (content) => {
-                        fullResponse += content;
-                        if (fullResponse.includes('<think')) {
-                            this.messageComponent.updateMessageWithThinking(
-                                typingIndicator,
-                                fullResponse,
-                                this.isMarkdownEnabled
-                            );
-                        } else {
-                            this.messageComponent.updateMessage(
-                                typingIndicator,
-                                fullResponse,
-                                this.isMarkdownEnabled
-                            );
+                    onToolResult: (round, toolName, output, success, toolCallId) => {
+                        const roundState = ensureRound(round);
+                        let toolState = roundState.toolCalls.find(
+                            tool => tool.id === toolCallId && tool.id
+                        );
+                        if (!toolState) {
+                            toolState = [...roundState.toolCalls]
+                                .reverse()
+                                .find(tool => tool.name === toolName && tool.status === 'running');
+                        }
+                        if (toolState) {
+                            toolState.output = output;
+                            toolState.success = success;
+                            toolState.status = success ? 'done' : 'error';
+                        }
+                        if (success === false) {
+                            roundState.status = 'error';
+                        }
+                        renderTranscript();
+                        if (this.toolExecutionViewer) {
+                            this.toolExecutionViewer.addToolResult(toolName, output, success, round, toolCallId);
                         }
                     },
-                    onToolStart: (toolName, toolInput) => {
-                        if (this.toolExecutionViewer) {
-                            this.toolExecutionViewer.addToolStart(toolName, toolInput);
-                        }
-                    },
-                    onToolResult: (toolName, output, success) => {
-                        if (this.toolExecutionViewer) {
-                            this.toolExecutionViewer.addToolResult(toolName, output, success);
-                        }
+                    onRoundComplete: (round) => {
+                        const roundState = ensureRound(round);
+                        roundState.status = roundState.toolCalls.some(tool => tool.status === 'error')
+                            ? 'error'
+                            : 'done';
+                        renderTranscript();
                     },
                     onFileCreated: (filePath, fileSize) => {
                         if (this.toolExecutionViewer) {
@@ -1240,52 +1295,35 @@ export class ChatApp {
                             this.messageComponent.addSystemMessage(notice);
                         }
                     },
-                    onResponseChunk: (content) => {
-                        fullResponse += content;
-                        if (fullResponse.includes('<think')) {
-                            this.messageComponent.updateMessageWithThinking(
-                                typingIndicator,
-                                fullResponse,
-                                this.isMarkdownEnabled
-                            );
-                        } else {
-                            this.messageComponent.updateMessage(
-                                typingIndicator,
-                                fullResponse,
-                                this.isMarkdownEnabled
-                            );
-                        }
+                    onFinalStart: () => {
+                        transcriptState.finalStarted = true;
+                        renderTranscript();
+                    },
+                    onFinalChunk: (content) => {
+                        transcriptState.finalStarted = true;
+                        transcriptState.finalAnswer += content;
+                        renderTranscript();
                     },
                     onCitations: (citations) => {
-                        coworkingCitations = citations;
+                        transcriptState.citations = citations || [];
+                        renderTranscript();
                     },
                     onDone: (finalAnswer, generatedFiles, deletedFiles) => {
-                        this.messageComponent.removeTypingIndicator(typingIndicator);
                         if (this.toolExecutionViewer) {
                             this.toolExecutionViewer.setFileState(generatedFiles, deletedFiles);
                         }
                         if (finalAnswer) {
-                            const messageEl = this.messageComponent.addAssistantMessage(
-                                finalAnswer,
-                                this.isMarkdownEnabled
-                            );
-                            if (coworkingCitations && messageEl) {
-                                this.messageComponent.applyCitations(messageEl, coworkingCitations);
-                            }
+                            transcriptState.finalStarted = true;
+                            transcriptState.finalAnswer = finalAnswer;
                         }
+                        renderTranscript();
                     },
                     onError: (error) => {
                         console.error('Coworking error:', error);
-                        this.messageComponent.removeTypingIndicator(typingIndicator);
                         this.messageComponent.addErrorMessage(`Error: ${error}`);
                     }
                 }
             );
-
-            // Collapse all thinking blocks now that streaming is complete
-            if (fullResponse.includes('<think')) {
-                this.messageComponent.collapseThinkingBlocks(typingIndicator);
-            }
 
             // Refresh sidebar
             await this.sidebar.loadConversations();
