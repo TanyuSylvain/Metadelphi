@@ -19,6 +19,7 @@ from backend.api.schemas import (
 from backend.core.multi_agent import MultiAgentDebateWorkflow
 from backend.storage import get_storage
 from backend.config import settings
+from backend.providers import ProviderFactory, ProviderRegistry
 
 router = APIRouter(prefix="/chat/multi-agent", tags=["multi-agent-chat"])
 
@@ -94,7 +95,7 @@ def resolve_models(models: MultiAgentModelConfig = None) -> tuple[str, str, str]
     Returns:
         Tuple of (moderator_model, expert_model, critic_model)
     """
-    default_model = settings.default_model
+    default_model = get_debate_default_model()
 
     if models is None:
         return default_model, default_model, default_model
@@ -104,6 +105,43 @@ def resolve_models(models: MultiAgentModelConfig = None) -> tuple[str, str, str]
         models.expert or default_model,
         models.critic or default_model
     )
+
+
+def get_debate_default_model() -> str:
+    """Return a valid model ID for debate defaults."""
+    configured_default = settings.default_model
+
+    if configured_default:
+        try:
+            ProviderRegistry.find_provider_for_model(configured_default)
+            return configured_default
+        except ValueError:
+            pass
+
+    all_models = ProviderFactory.list_all_models()
+    if not all_models:
+        raise HTTPException(status_code=500, detail="No registered models are available for debate mode")
+
+    return all_models[0]["model_id"]
+
+
+def validate_resolved_models(
+    moderator_model: str,
+    expert_model: str,
+    critic_model: str
+) -> None:
+    """Validate resolved role models before creating the workflow."""
+    role_models = {
+        "moderator": moderator_model,
+        "expert": expert_model,
+        "critic": critic_model,
+    }
+
+    for role, model_id in role_models.items():
+        try:
+            ProviderRegistry.find_provider_for_model(model_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid {role} model: {model_id}") from exc
 
 
 @router.post("/", response_model=MultiAgentChatResponse)
@@ -129,6 +167,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
     try:
         # Resolve models
         moderator_model, expert_model, critic_model = resolve_models(request.models)
+        validate_resolved_models(moderator_model, expert_model, critic_model)
 
         # Extract thinking configuration
         thinking = request.thinking or ThinkingConfig()
@@ -191,6 +230,7 @@ async def multi_agent_chat_stream(request: MultiAgentChatRequest):
 
     # Resolve models
     moderator_model, expert_model, critic_model = resolve_models(request.models)
+    validate_resolved_models(moderator_model, expert_model, critic_model)
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
     # Extract thinking configuration

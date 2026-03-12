@@ -56,6 +56,7 @@ export class MultiAgentConfig {
     async initialize() {
         try {
             this.models = await this.apiClient.getModels();
+            this.sanitizeConfig();
             this.render();
             this.setupEventListeners();
         } catch (error) {
@@ -175,6 +176,10 @@ export class MultiAgentConfig {
         this.setSelectValue('expert-model', this.config.expert);
         this.setSelectValue('critic-model', this.config.critic);
 
+        // Sync internal state with the actual DOM selection after invalid saved values
+        // have been discarded or when the browser auto-selects the first option.
+        this.syncConfigFromSelects();
+
         // Update thinking toggle states based on selected models
         this.updateThinkingToggleState('moderator');
         this.updateThinkingToggleState('expert');
@@ -204,6 +209,38 @@ export class MultiAgentConfig {
         });
 
         return html;
+    }
+
+    /**
+     * Remove saved model IDs that are no longer available.
+     */
+    sanitizeConfig() {
+        const availableModelIds = new Set(this.models.map(model => model.model_id));
+        let changed = false;
+
+        ['moderator', 'expert', 'critic'].forEach(role => {
+            const modelId = this.config[role];
+            if (modelId && !availableModelIds.has(modelId)) {
+                this.config[role] = null;
+                this.config.thinking[role] = false;
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            this.saveConfig();
+        }
+    }
+
+    /**
+     * Sync internal role selections from the current DOM state.
+     */
+    syncConfigFromSelects() {
+        ['moderator', 'expert', 'critic'].forEach(role => {
+            const select = this.container.querySelector(`select[data-role="${role}"]`);
+            this.config[role] = select && select.value ? select.value : null;
+        });
+        this.saveConfig();
     }
 
     /**
@@ -366,18 +403,30 @@ export class MultiAgentConfig {
      * @returns {Object} Configuration object
      */
     getConfig() {
+        const getRoleModel = (role) => {
+            const select = this.container.querySelector(`select[data-role="${role}"]`);
+            if (select && select.value) {
+                return select.value;
+            }
+            return this.config[role] || this.getDefaultModel();
+        };
+
+        const moderatorModel = getRoleModel('moderator');
+        const expertModel = getRoleModel('expert');
+        const criticModel = getRoleModel('critic');
+
         return {
             models: {
-                moderator: this.config.moderator || this.getDefaultModel(),
-                expert: this.config.expert || this.getDefaultModel(),
-                critic: this.config.critic || this.getDefaultModel()
+                moderator: moderatorModel,
+                expert: expertModel,
+                critic: criticModel
             },
             maxIterations: this.config.maxIterations,
             scoreThreshold: this.config.scoreThreshold,
             thinking: {
-                moderator: this.config.thinking.moderator || false,
-                expert: this.config.thinking.expert || false,
-                critic: this.config.thinking.critic || false
+                moderator: moderatorModel ? (this.config.thinking.moderator || false) : false,
+                expert: expertModel ? (this.config.thinking.expert || false) : false,
+                critic: criticModel ? (this.config.thinking.critic || false) : false
             }
         };
     }
