@@ -13,14 +13,16 @@ import asyncio
 import subprocess
 import shutil
 import locale
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, FileResponse
 
 from backend.api.schemas import CoworkingChatRequest, OpenFileRequest
+from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.coworking_agent import (
     CoworkingAgent,
     ensure_coworking_session_state,
 )
+from backend.core.run_manager import RunCancelledError
 from backend.tools.workspace_tools import resolve_in_workspace
 from backend.storage import get_storage
 from backend.config import settings
@@ -127,7 +129,7 @@ def get_agent(model_id: str, thinking: bool = False) -> CoworkingAgent:
 
 
 @router.post("/stream")
-async def coworking_chat_stream(request: CoworkingChatRequest):
+async def coworking_chat_stream(http_request: Request, request: CoworkingChatRequest):
     """
     Send a message and get a streaming coworking agent response.
 
@@ -158,8 +160,13 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
     model_id = request.model or settings.default_model
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
+    run_context = await run_manager.create_run(mode="coworking", conversation_id=conversation_id)
+
     async def generate():
         """Generate SSE stream of coworking agent events."""
+        task = asyncio.current_task()
+        if task:
+            await run_context.register_task(task)
         try:
             agent = get_agent(
                 model_id=model_id,
@@ -171,17 +178,33 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
                 conversation_id=conversation_id,
                 workspace_path=workspace_path,
                 max_iterations=request.max_iterations,
-                web_search=request.web_search or False
+                web_search=request.web_search or False,
+                run_context=run_context,
             ):
+                if await http_request.is_disconnected():
+                    await run_context.cancel()
+                    raise RunCancelledError("Client disconnected")
                 event_data = json.dumps(event, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
 
+        except asyncio.CancelledError:
+            await run_context.cancel()
+            await persist_cancellation_notice(_storage, conversation_id)
+        except RunCancelledError:
+            await persist_cancellation_notice(_storage, conversation_id)
+            if not await http_request.is_disconnected():
+                event_data = json.dumps({"type": "cancelled", "message": CANCELLATION_MESSAGE}, ensure_ascii=False)
+                yield f"data: {event_data}\n\n"
         except Exception as e:
             error_event = json.dumps({
                 "type": "error",
                 "error": str(e)
             }, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
+        finally:
+            if task:
+                await run_context.unregister_task(task)
+            await run_manager.finish_run(run_context.run_id)
 
     return StreamingResponse(
         generate(),
@@ -190,6 +213,7 @@ async def coworking_chat_stream(request: CoworkingChatRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
+            "X-Run-ID": run_context.run_id,
             "X-Model-ID": model_id
         }
     )

@@ -84,7 +84,7 @@ export class APIClient {
      * @param {boolean} thinking - Enable thinking mode
      * @returns {Promise<void>}
      */
-    async streamMessage(message, conversationId, modelId, onChunk, thinking = false, webSearch = false) {
+    async streamMessage(message, conversationId, modelId, onChunk, thinking = false, webSearch = false, options = {}) {
         try {
             const body = {
                 message,
@@ -101,12 +101,18 @@ export class APIClient {
             const response = await fetch(`${this.baseURL}/chat/stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: options.signal
             });
 
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || 'Request failed');
+            }
+
+            const runId = response.headers.get('X-Run-ID');
+            if (options.onRunStart) {
+                options.onRunStart(runId);
             }
 
             const reader = response.body.getReader();
@@ -261,7 +267,7 @@ export class APIClient {
      * @param {Function} callbacks.onError - Called on error
      * @returns {Promise<void>}
      */
-    async streamMultiAgentDebate(message, conversationId, config, callbacks) {
+    async streamMultiAgentDebate(message, conversationId, config, callbacks, options = {}) {
         try {
             const body = {
                 message,
@@ -279,12 +285,18 @@ export class APIClient {
             const response = await fetch(`${this.baseURL}/chat/multi-agent/stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: options.signal
             });
 
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || 'Request failed');
+            }
+
+            const runId = response.headers.get('X-Run-ID');
+            if (options.onRunStart) {
+                options.onRunStart(runId);
             }
 
             const reader = response.body.getReader();
@@ -384,6 +396,11 @@ export class APIClient {
                     callbacks.onPhaseChange('done', 0);
                 }
                 break;
+            case 'cancelled':
+                if (callbacks.onCancelled) {
+                    callbacks.onCancelled(event.message || 'Current task was cancelled.');
+                }
+                break;
             case 'error':
                 if (callbacks.onError) {
                     callbacks.onError(event.error);
@@ -405,7 +422,7 @@ export class APIClient {
      * @param {Object} callbacks - Event callbacks
      * @returns {Promise<void>}
      */
-    async streamCoworkingChat(message, conversationId, modelId, workspacePath, thinking, maxIterations, webSearch, callbacks) {
+    async streamCoworkingChat(message, conversationId, modelId, workspacePath, thinking, maxIterations, webSearch, callbacks, options = {}) {
         try {
             const body = {
                 message,
@@ -422,12 +439,18 @@ export class APIClient {
             const response = await fetch(`${this.baseURL}/chat/coworking/stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: options.signal
             });
 
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || 'Request failed');
+            }
+
+            const runId = response.headers.get('X-Run-ID');
+            if (options.onRunStart) {
+                options.onRunStart(runId);
             }
 
             const reader = response.body.getReader();
@@ -548,6 +571,11 @@ export class APIClient {
                         event.generated_files || [],
                         event.deleted_files || []
                     );
+                }
+                break;
+            case 'cancelled':
+                if (callbacks.onCancelled) {
+                    callbacks.onCancelled(event.message || 'Current task was cancelled.');
                 }
                 break;
             case 'error':
@@ -722,6 +750,26 @@ export class APIClient {
             return await response.json();
         } catch (error) {
             console.error('Error switching mode:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancel an active streaming run.
+     * @param {string} runId - Active backend run ID
+     * @returns {Promise<Object>} Cancellation status
+     */
+    async cancelRun(runId) {
+        try {
+            const response = await fetch(`${this.baseURL}/chat/runs/${runId}/cancel`, {
+                method: 'POST'
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to cancel run: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error cancelling run:', error);
             throw error;
         }
     }

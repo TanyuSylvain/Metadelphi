@@ -14,6 +14,8 @@ from threading import Lock
 from langchain_core.tools import BaseTool
 from langchain_core.messages import ToolMessage
 
+from backend.core.run_manager import RunCancelledError, RunContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,7 +61,8 @@ class ParallelExecutionProgress:
 async def execute_single_tool(
     tool: BaseTool,
     spec: ToolCallSpec,
-    timeout: float = 60.0
+    timeout: float = 60.0,
+    run_context: Optional[RunContext] = None,
 ) -> ToolResult:
     """
     Execute a single tool with timeout and error handling.
@@ -73,6 +76,8 @@ async def execute_single_tool(
         ToolResult with content, success status, and error if any
     """
     try:
+        if run_context:
+            run_context.raise_if_cancelled()
         # Execute with timeout
         result = await asyncio.wait_for(
             tool.ainvoke(spec.args),
@@ -84,6 +89,8 @@ async def execute_single_tool(
             success=True,
             index=spec.index
         )
+    except (asyncio.CancelledError, RunCancelledError):
+        raise
     except asyncio.TimeoutError:
         error_msg = f"Tool '{spec.name}' timed out after {timeout}s"
         logger.warning(error_msg)
@@ -112,7 +119,8 @@ async def execute_tools_parallel(
     max_concurrency: int = 5,
     timeout: float = 60.0,
     on_tool_start: Optional[Callable[[ToolCallSpec], None]] = None,
-    on_tool_complete: Optional[Callable[[ToolResult], None]] = None
+    on_tool_complete: Optional[Callable[[ToolResult], None]] = None,
+    run_context: Optional[RunContext] = None,
 ) -> List[ToolResult]:
     """
     Execute multiple tool calls in parallel with concurrency control.
@@ -131,12 +139,17 @@ async def execute_tools_parallel(
     if not tool_calls:
         return []
 
+    if run_context:
+        run_context.raise_if_cancelled()
+
     semaphore = asyncio.Semaphore(max_concurrency)
     progress = ParallelExecutionProgress(total=len(tool_calls))
 
     async def execute_with_semaphore(spec: ToolCallSpec) -> ToolResult:
         """Execute a tool call with semaphore for concurrency control."""
         async with semaphore:
+            if run_context:
+                run_context.raise_if_cancelled()
             if on_tool_start:
                 on_tool_start(spec)
 
@@ -150,7 +163,7 @@ async def execute_tools_parallel(
                     index=spec.index
                 )
             else:
-                result = await execute_single_tool(tool, spec, timeout)
+                result = await execute_single_tool(tool, spec, timeout, run_context)
 
             progress.add_result(result)
 
@@ -160,8 +173,22 @@ async def execute_tools_parallel(
             return result
 
     # Execute all tool calls concurrently
-    tasks = [execute_with_semaphore(spec) for spec in tool_calls]
-    await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [asyncio.create_task(execute_with_semaphore(spec)) for spec in tool_calls]
+    try:
+        if run_context:
+            for task in tasks:
+                await run_context.register_task(task)
+        await asyncio.gather(*tasks)
+    except (asyncio.CancelledError, RunCancelledError):
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    finally:
+        if run_context:
+            for task in tasks:
+                await run_context.unregister_task(task)
 
     # Return results in original order
     return progress.get_sorted_results()

@@ -123,6 +123,11 @@ export class ChatApp {
         this.debatePanelToggleOn = true; // Toggle button state (on = will show panel when debate starts)
         this.currentDebateId = null;
         this.currentDebateIteration = 0;
+        this.activeRunId = null;
+        this.activeAbortController = null;
+        this.activeMode = null;
+        this.cancelRequested = false;
+        this.cancellationMessageShown = false;
 
         // Initialize the app
         this.initialize();
@@ -196,7 +201,13 @@ export class ChatApp {
      */
     setupEventListeners() {
         // Send button click
-        this.sendBtn.addEventListener('click', () => this.sendMessage());
+        this.sendBtn.addEventListener('click', () => {
+            if (this.isProcessing) {
+                this.cancelActiveRun();
+                return;
+            }
+            this.sendMessage();
+        });
 
         // Enter key in input (Shift+Enter for new line)
         this.messageInput.addEventListener('keydown', (e) => {
@@ -879,15 +890,14 @@ export class ChatApp {
         this.messageComponent.addUserMessage(message);
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
+        this.beginRun('simple');
         this.setProcessing(true);
 
         // Show typing indicator
         const typingIndicator = this.messageComponent.showTypingIndicator();
+        let fullResponse = '';
 
         try {
-            // Stream response
-            let fullResponse = '';
-
             await this.apiClient.streamMessage(
                 message,
                 this.conversationId,
@@ -910,7 +920,8 @@ export class ChatApp {
                     }
                 },
                 this.isThinkingEnabled,
-                this.isWebSearchEnabled
+                this.isWebSearchEnabled,
+                this.getStreamOptions()
             );
 
             // Collapse all thinking blocks now that streaming is complete
@@ -951,13 +962,22 @@ export class ChatApp {
             this.sidebar.setCurrentConversation(this.conversationId);
 
         } catch (error) {
-            console.error('Error sending message:', error);
-            this.messageComponent.removeTypingIndicator(typingIndicator);
-            this.messageComponent.addErrorMessage(
-                `Error: ${error.message}`
-            );
+            if (this.cancelRequested && this.isAbortError(error)) {
+                if (!fullResponse.trim()) {
+                    this.messageComponent.removeTypingIndicator(typingIndicator);
+                }
+                this.showCancellationMessage();
+            } else {
+                console.error('Error sending message:', error);
+                this.messageComponent.removeTypingIndicator(typingIndicator);
+                this.messageComponent.addErrorMessage(
+                    `Error: ${error.message}`
+                );
+            }
         } finally {
             this.setProcessing(false);
+            await this.refreshSidebarSafely();
+            this.resetRunState();
             this.messageInput.focus();
         }
     }
@@ -981,6 +1001,7 @@ export class ChatApp {
         this.messageComponent.addUserMessage(message);
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
+        this.beginRun('debate');
         this.setProcessing(true);
 
         // Generate debate ID for this session
@@ -1106,7 +1127,19 @@ export class ChatApp {
                         // Hide agent status
                         this.hideAgentStatus();
                     },
+                    onCancelled: (messageText) => {
+                        this.messageComponent.removeTypingIndicator(typingIndicator);
+                        if (this.progressIndicator) {
+                            this.progressIndicator.complete('cancelled');
+                        }
+                        if (this.moderatorStatusIndicator) {
+                            this.moderatorStatusIndicator.hide();
+                        }
+                        this.hideAgentStatus();
+                        this.showCancellationMessage(messageText);
+                    },
                     onError: (error) => {
+                        if (this.cancelRequested) return;
                         console.error('Multi-agent error:', error);
                         this.messageComponent.removeTypingIndicator(typingIndicator);
                         this.messageComponent.addErrorMessage(`Error: ${error}`);
@@ -1118,7 +1151,8 @@ export class ChatApp {
                         // Hide agent status on error
                         this.hideAgentStatus();
                     }
-                }
+                },
+                this.getStreamOptions()
             );
 
             // Refresh the sidebar
@@ -1126,18 +1160,32 @@ export class ChatApp {
             this.sidebar.setCurrentConversation(this.conversationId);
 
         } catch (error) {
-            console.error('Error in multi-agent debate:', error);
-            this.messageComponent.removeTypingIndicator(typingIndicator);
-            this.messageComponent.addErrorMessage(`Error: ${error.message}`);
+            if (this.cancelRequested && this.isAbortError(error)) {
+                this.messageComponent.removeTypingIndicator(typingIndicator);
+                if (this.progressIndicator) {
+                    this.progressIndicator.complete('cancelled');
+                }
+                if (this.moderatorStatusIndicator) {
+                    this.moderatorStatusIndicator.hide();
+                }
+                this.hideAgentStatus();
+                this.showCancellationMessage();
+            } else {
+                console.error('Error in multi-agent debate:', error);
+                this.messageComponent.removeTypingIndicator(typingIndicator);
+                this.messageComponent.addErrorMessage(`Error: ${error.message}`);
 
-            if (this.progressIndicator) {
-                this.progressIndicator.showError(error.message);
+                if (this.progressIndicator) {
+                    this.progressIndicator.showError(error.message);
+                }
+
+                // Hide agent status on error
+                this.hideAgentStatus();
             }
-
-            // Hide agent status on error
-            this.hideAgentStatus();
         } finally {
             this.setProcessing(false);
+            await this.refreshSidebarSafely();
+            this.resetRunState();
             this.messageInput.focus();
         }
     }
@@ -1162,6 +1210,7 @@ export class ChatApp {
         this.messageComponent.addUserMessage(message);
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
+        this.beginRun('coworking');
         this.setProcessing(true);
 
         // Show coworking panel
@@ -1318,11 +1367,16 @@ export class ChatApp {
                         }
                         renderTranscript();
                     },
+                    onCancelled: (messageText) => {
+                        this.showCancellationMessage(messageText);
+                    },
                     onError: (error) => {
+                        if (this.cancelRequested) return;
                         console.error('Coworking error:', error);
                         this.messageComponent.addErrorMessage(`Error: ${error}`);
                     }
-                }
+                },
+                this.getStreamOptions()
             );
 
             // Refresh sidebar
@@ -1330,11 +1384,16 @@ export class ChatApp {
             this.sidebar.setCurrentConversation(this.conversationId);
 
         } catch (error) {
-            console.error('Error in coworking chat:', error);
-            this.messageComponent.removeTypingIndicator(typingIndicator);
-            this.messageComponent.addErrorMessage(`Error: ${error.message}`);
+            if (this.cancelRequested && this.isAbortError(error)) {
+                this.showCancellationMessage();
+            } else {
+                console.error('Error in coworking chat:', error);
+                this.messageComponent.addErrorMessage(`Error: ${error.message}`);
+            }
         } finally {
             this.setProcessing(false);
+            await this.refreshSidebarSafely();
+            this.resetRunState();
             this.messageInput.focus();
         }
     }
@@ -1535,8 +1594,82 @@ export class ChatApp {
      */
     setProcessing(processing) {
         this.isProcessing = processing;
-        this.sendBtn.disabled = processing;
+        this.sendBtn.disabled = false;
+        this.sendBtn.textContent = processing ? 'Cancel' : 'Send';
+        this.sendBtn.classList.toggle('cancel-button', processing);
         this.messageInput.disabled = processing;
+    }
+
+    beginRun(mode) {
+        this.activeMode = mode;
+        this.activeRunId = null;
+        this.cancelRequested = false;
+        this.cancellationMessageShown = false;
+        this.activeAbortController = new AbortController();
+    }
+
+    resetRunState() {
+        this.activeMode = null;
+        this.activeRunId = null;
+        this.activeAbortController = null;
+        this.cancelRequested = false;
+        this.cancellationMessageShown = false;
+    }
+
+    getStreamOptions() {
+        return {
+            signal: this.activeAbortController ? this.activeAbortController.signal : undefined,
+            onRunStart: (runId) => {
+                this.activeRunId = runId;
+                if (this.cancelRequested && runId) {
+                    this.apiClient.cancelRun(runId).catch((error) => {
+                        console.warn('Failed to cancel active run:', error);
+                    });
+                }
+            }
+        };
+    }
+
+    async cancelActiveRun() {
+        if (!this.isProcessing) return;
+
+        this.cancelRequested = true;
+        this.showCancellationMessage();
+
+        if (this.activeRunId) {
+            try {
+                await this.apiClient.cancelRun(this.activeRunId);
+            } catch (error) {
+                console.warn('Failed to cancel active run:', error);
+            }
+        }
+
+        if (this.activeAbortController) {
+            this.activeAbortController.abort();
+        }
+    }
+
+    showCancellationMessage(message = 'Current task was cancelled.') {
+        if (this.cancellationMessageShown) return;
+        this.cancellationMessageShown = true;
+        this.messageComponent.addSystemMessage(message);
+    }
+
+    isAbortError(error) {
+        return error && (
+            error.name === 'AbortError' ||
+            error.code === 20 ||
+            String(error.message || '').toLowerCase().includes('abort')
+        );
+    }
+
+    async refreshSidebarSafely() {
+        try {
+            await this.sidebar.loadConversations();
+            this.sidebar.setCurrentConversation(this.conversationId);
+        } catch (error) {
+            console.warn('Failed to refresh sidebar:', error);
+        }
     }
 
     /**

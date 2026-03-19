@@ -2,12 +2,15 @@
 Chat endpoints for interacting with LLM agents.
 """
 
+import asyncio
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.api.schemas import ChatRequest, ChatResponse
+from backend.api.run_control import persist_cancellation_notice, run_manager
 from backend.core.agent import LangGraphAgent
+from backend.core.run_manager import RunCancelledError
 from backend.tools.web_search import get_web_search_tools
 from backend.storage import get_storage
 from backend.config import settings
@@ -89,7 +92,7 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(http_request: Request, request: ChatRequest):
     """
     Send a message and get a streaming response.
 
@@ -107,14 +110,35 @@ async def chat_stream(request: ChatRequest):
     thinking = request.thinking if request.thinking is not None else False
     web_search = request.web_search or False
 
+    run_context = await run_manager.create_run(mode="simple", conversation_id=conversation_id)
+
     async def generate():
         """Generate streaming response chunks."""
+        task = asyncio.current_task()
+        if task:
+            await run_context.register_task(task)
         try:
             agent = await get_agent(model_id, thinking, web_search)
-            async for chunk in agent.stream(request.message, conversation_id):
+            async for chunk in agent.stream(
+                request.message,
+                conversation_id,
+                run_context=run_context,
+            ):
+                if await http_request.is_disconnected():
+                    await run_context.cancel()
+                    raise RunCancelledError("Client disconnected")
                 yield chunk
+        except asyncio.CancelledError:
+            await run_context.cancel()
+            await persist_cancellation_notice(_storage, conversation_id)
+        except RunCancelledError:
+            await persist_cancellation_notice(_storage, conversation_id)
         except Exception as e:
             yield f"\n[Error: {str(e)}]"
+        finally:
+            if task:
+                await run_context.unregister_task(task)
+            await run_manager.finish_run(run_context.run_id)
 
     return StreamingResponse(
         generate(),
@@ -123,6 +147,7 @@ async def chat_stream(request: ChatRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
+            "X-Run-ID": run_context.run_id,
             "X-Model-ID": model_id
         }
     )

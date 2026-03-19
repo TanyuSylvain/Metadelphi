@@ -963,6 +963,14 @@ body {
     background: #2a2a4e;
 }
 
+#sendBtn.cancel-button {
+    background: #c0392b;
+}
+
+#sendBtn.cancel-button:hover {
+    background: #a93226;
+}
+
 #sendBtn:disabled {
     background: #ccc;
     cursor: not-allowed;

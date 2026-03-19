@@ -2,6 +2,7 @@
 Core LangGraph agent implementation with provider and storage abstractions.
 """
 
+import asyncio
 import json
 import logging
 from typing import TypedDict, Annotated, Optional, List
@@ -25,6 +26,7 @@ from backend.utils.parallel_tools import (
     ToolCallSpec,
     execute_tools_parallel,
 )
+from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +107,12 @@ class LangGraphAgent:
         response = self.llm.invoke(messages)
         return {"messages": [response]}
 
-    async def stream(self, question: str, conversation_id: str = None):
+    async def stream(
+        self,
+        question: str,
+        conversation_id: str = None,
+        run_context: Optional[RunContext] = None,
+    ):
         """
         Stream the response to a user question.
 
@@ -151,9 +158,12 @@ class LangGraphAgent:
         if self.llm_with_tools and self.tools:
             full_response = ""
             try:
-                async for chunk in self._stream_with_tools(messages):
-                    full_response += chunk
-                    yield chunk
+                async with use_run_context(run_context):
+                    async for chunk in self._stream_with_tools(messages, run_context=run_context):
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        full_response += chunk
+                        yield chunk
             finally:
                 if conversation_id and full_response:
                     clean_response = strip_citations_metadata(full_response)
@@ -168,14 +178,17 @@ class LangGraphAgent:
             # Original simple streaming path
             full_response = ""
             try:
-                async for chunk in self.llm.astream(messages):
-                    if hasattr(chunk, 'content'):
-                        content = chunk.content
-                        if content:
-                            text_content = TextProcessor.extract_text_content(content)
-                            if text_content:
-                                full_response += text_content
-                                yield text_content
+                async with use_run_context(run_context):
+                    async for chunk in self.llm.astream(messages):
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        if hasattr(chunk, 'content'):
+                            content = chunk.content
+                            if content:
+                                text_content = TextProcessor.extract_text_content(content)
+                                if text_content:
+                                    full_response += text_content
+                                    yield text_content
             finally:
                 if conversation_id and full_response:
                     converted_response = TextProcessor.convert_math_delimiters(full_response)
@@ -186,7 +199,12 @@ class LangGraphAgent:
                         model=self.model_id
                     )
 
-    async def _stream_with_tools(self, messages: list, max_iterations: int = 10):
+    async def _stream_with_tools(
+        self,
+        messages: list,
+        max_iterations: int = 10,
+        run_context: Optional[RunContext] = None,
+    ):
         """
         ReAct loop: stream LLM with tools, execute tool calls, repeat.
 
@@ -203,10 +221,14 @@ class LangGraphAgent:
         messages.insert(0, SystemMessage(content=CITATION_SYSTEM_INSTRUCTION))
 
         for iteration in range(max_iterations):
+            if run_context:
+                run_context.raise_if_cancelled()
             full_content = ""
             tool_calls = []
 
             async for chunk in self.llm_with_tools.astream(messages):
+                if run_context:
+                    run_context.raise_if_cancelled()
                 # Accumulate text content
                 if hasattr(chunk, 'content') and chunk.content:
                     text = TextProcessor.extract_text_content(chunk.content)
@@ -231,6 +253,8 @@ class LangGraphAgent:
                 # No tool calls — final response, done
                 messages.append(AIMessage(content=full_content))
                 if citations:
+                    if run_context:
+                        run_context.raise_if_cancelled()
                     yield format_citations_metadata(citations)
                 break
 
@@ -270,6 +294,8 @@ class LangGraphAgent:
 
             # Yield status markers for all tools upfront
             for spec in tool_specs:
+                if run_context:
+                    run_context.raise_if_cancelled()
                 yield f"\n\n{format_tool_start(spec.name, spec.args)}\n\n"
 
             # Execute tools in parallel
@@ -277,11 +303,14 @@ class LangGraphAgent:
                 tool_map=self.tool_map,
                 tool_calls=tool_specs,
                 max_concurrency=settings.max_tool_concurrency,
-                timeout=60.0
+                timeout=60.0,
+                run_context=run_context,
             )
 
             # Add tool messages to conversation and extract citations
             for result in results:
+                if run_context:
+                    run_context.raise_if_cancelled()
                 original_tool = tool_call_map.get(result.tool_call_id)
                 if original_tool:
                     yield f"\n\n{format_tool_result(original_tool['name'], original_tool['args'], result.content, result.success)}\n\n"
@@ -301,7 +330,12 @@ class LangGraphAgent:
 
             # Continue loop — LLM will process tool results
 
-    async def invoke(self, question: str, conversation_id: str = None) -> str:
+    async def invoke(
+        self,
+        question: str,
+        conversation_id: str = None,
+        run_context: Optional[RunContext] = None,
+    ) -> str:
         """
         Get the complete response to a user question.
 
@@ -314,7 +348,7 @@ class LangGraphAgent:
         """
         # Collect from stream() to support tool-augmented path
         full_response = ""
-        async for chunk in self.stream(question, conversation_id):
+        async for chunk in self.stream(question, conversation_id, run_context=run_context):
             full_response += chunk
         return full_response
 

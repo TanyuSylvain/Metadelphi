@@ -9,6 +9,7 @@ This module implements a three-role multi-agent collaboration system:
 Uses LangGraph for workflow orchestration with sliding window memory management.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -30,6 +31,7 @@ from backend.core.prompts import (
     EXPERT_SUBSEQUENT_ITERATION_GUIDANCE,
     CRITIC_REVIEW_PROMPT,
 )
+from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 
 logger = logging.getLogger(__name__)
@@ -224,6 +226,64 @@ class MultiAgentDebateWorkflow:
                 }
             }
 
+    async def _moderator_init_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+        """Async moderator init used by the streaming path for cancellation support."""
+        if run_context:
+            run_context.raise_if_cancelled()
+
+        conversation_context = ""
+        if state.get("conversation_context"):
+            conversation_context = f"## 对话上下文\n\n{state['conversation_context']}\n"
+
+        prompt = MODERATOR_INIT_PROMPT.format(
+            question=state["original_question"],
+            conversation_context=conversation_context
+        )
+
+        response = await self.moderator_llm.ainvoke([{"role": "user", "content": prompt}])
+        if run_context:
+            run_context.raise_if_cancelled()
+        text_content = TextProcessor.extract_text_content(response.content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_moderator)
+
+        if "error" in result:
+            return {
+                "complexity": "complex",
+                "current_task": f"请全面分析和回答以下问题: {state['original_question']}",
+                "iteration": 1
+            }
+
+        complexity = result.get("complexity", "complex")
+        decision = result.get("decision", "delegate_expert")
+
+        if decision == "direct_answer" and result.get("direct_answer"):
+            return {
+                "complexity": complexity,
+                "final_answer": result["direct_answer"],
+                "status": "direct_answer",
+                "termination_reason": "simple_question",
+                "moderator_init_analysis": {
+                    "intent": result.get("intent"),
+                    "key_constraints": result.get("key_constraints"),
+                    "complexity": complexity,
+                    "complexity_reason": result.get("complexity_reason"),
+                    "decision": decision
+                }
+            }
+
+        return {
+            "complexity": complexity,
+            "current_task": result.get("task_for_expert", f"请全面分析和回答: {state['original_question']}"),
+            "iteration": 1,
+            "moderator_init_analysis": {
+                "intent": result.get("intent"),
+                "key_constraints": result.get("key_constraints"),
+                "complexity": complexity,
+                "complexity_reason": result.get("complexity_reason"),
+                "decision": decision
+            }
+        }
+
     def _expert_generate_node(self, state: MultiAgentState) -> dict:
         """
         Expert generates or refines answer based on moderator's guidance.
@@ -293,6 +353,70 @@ class MultiAgentDebateWorkflow:
 
         return {"current_answer": result}
 
+    async def _expert_generate_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+        """Async expert step used by the streaming path for cancellation support."""
+        if run_context:
+            run_context.raise_if_cancelled()
+
+        is_first = state["iteration"] == 1
+
+        if is_first:
+            improvement_section = ""
+            iteration_guidance = EXPERT_FIRST_ITERATION_GUIDANCE
+        else:
+            prev_answer = state.get("current_answer", {})
+            prev_answer_summary = f"""
+核心观点: {', '.join(prev_answer.get('core_points', []))}
+结论: {prev_answer.get('conclusion', 'N/A')}
+置信度: {prev_answer.get('confidence', 'N/A')}
+"""
+            prev_review = state.get("current_review", {})
+            critic_feedback = f"""
+评分: {prev_review.get('overall_score', 'N/A')}
+问题: {json.dumps(prev_review.get('issues', []), ensure_ascii=False)}
+建议: {', '.join(prev_review.get('suggestions', []))}
+"""
+            improvement_section = EXPERT_IMPROVEMENT_SECTION.format(
+                previous_answer_summary=prev_answer_summary,
+                critic_feedback=critic_feedback,
+                moderator_guidance=state.get("improvement_guidance", "")
+            )
+            iteration_guidance = EXPERT_SUBSEQUENT_ITERATION_GUIDANCE
+
+        conversation_context = ""
+        if state.get("conversation_context"):
+            conversation_context = f"## 对话上下文\n\n{state['conversation_context']}\n"
+
+        prompt = EXPERT_GENERATE_PROMPT.format(
+            original_question=state["original_question"],
+            current_task=state["current_task"],
+            iteration=state["iteration"],
+            is_first_iteration="是" if is_first else "否",
+            improvement_section=improvement_section,
+            iteration_guidance=iteration_guidance,
+            conversation_context=conversation_context
+        )
+
+        response = await self.expert_llm.ainvoke([{"role": "user", "content": prompt}])
+        if run_context:
+            run_context.raise_if_cancelled()
+        text_content = TextProcessor.extract_text_content(response.content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_expert)
+
+        if "error" in result:
+            result = {
+                "version": state["iteration"],
+                "understanding": "问题理解",
+                "core_points": ["核心观点"],
+                "details": text_content,
+                "conclusion": "结论",
+                "confidence": 0.5,
+                "limitations": [],
+                "modification_log": []
+            }
+
+        return {"current_answer": result}
+
     def _critic_review_node(self, state: MultiAgentState) -> dict:
         """
         Critic reviews the expert's answer.
@@ -312,6 +436,36 @@ class MultiAgentDebateWorkflow:
 
         if "error" in result:
             # Fallback: create basic review structure
+            result = {
+                "review_version": state["iteration"],
+                "overall_score": 70,
+                "passed": False,
+                "issues": [],
+                "strengths": [],
+                "suggestions": ["请继续完善回答"],
+                "confidence": 0.5
+            }
+
+        return {"current_review": result}
+
+    async def _critic_review_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+        """Async critic step used by the streaming path for cancellation support."""
+        if run_context:
+            run_context.raise_if_cancelled()
+
+        prompt = CRITIC_REVIEW_PROMPT.format(
+            original_question=state["original_question"],
+            expert_answer=json.dumps(state["current_answer"], ensure_ascii=False, indent=2),
+            score_threshold=self.score_threshold
+        )
+
+        response = await self.critic_llm.ainvoke([{"role": "user", "content": prompt}])
+        if run_context:
+            run_context.raise_if_cancelled()
+        text_content = TextProcessor.extract_text_content(response.content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_critic)
+
+        if "error" in result:
             result = {
                 "review_version": state["iteration"],
                 "overall_score": 70,
@@ -436,6 +590,113 @@ class MultiAgentDebateWorkflow:
                 }
             }
 
+    async def _moderator_synthesize_step(
+        self,
+        state: MultiAgentState,
+        run_context: Optional[RunContext] = None
+    ) -> dict:
+        """Async moderator synthesis step used by the streaming path."""
+        if run_context:
+            run_context.raise_if_cancelled()
+
+        previous_summary = state.get("previous_summary", "这是第一轮迭代，无历史记录。")
+        review = state.get("current_review", {})
+        score = review.get("overall_score", 0)
+        passed = review.get("passed", False)
+        iteration = state["iteration"]
+
+        forced_termination = False
+        forced_reason = None
+        termination_reason_display = None
+
+        if passed or score >= self.score_threshold:
+            forced_termination = True
+            forced_reason = "score_threshold" if score >= self.score_threshold else "explicit_pass"
+            termination_reason_display = f"评审通过，评分 {score} 达到阈值 {self.score_threshold}"
+        elif iteration >= self.max_iterations:
+            forced_termination = True
+            forced_reason = "max_iterations"
+            termination_reason_display = f"已达到最大迭代次数 ({iteration}/{self.max_iterations})"
+
+        if forced_termination:
+            prompt = MODERATOR_FINAL_SYNTHESIS_PROMPT.format(
+                original_question=state["original_question"],
+                iteration=iteration,
+                max_iterations=self.max_iterations,
+                previous_summary=previous_summary,
+                current_answer=json.dumps(state["current_answer"], ensure_ascii=False, indent=2),
+                current_review=json.dumps(state["current_review"], ensure_ascii=False, indent=2),
+                termination_reason=forced_reason,
+                termination_reason_display=termination_reason_display
+            )
+        else:
+            prompt = MODERATOR_SYNTHESIZE_PROMPT.format(
+                original_question=state["original_question"],
+                iteration=iteration,
+                max_iterations=self.max_iterations,
+                previous_summary=previous_summary,
+                current_answer=json.dumps(state["current_answer"], ensure_ascii=False, indent=2),
+                current_review=json.dumps(state["current_review"], ensure_ascii=False, indent=2),
+                score_threshold=self.score_threshold
+            )
+
+        response = await self.moderator_llm.ainvoke([{"role": "user", "content": prompt}])
+        if run_context:
+            run_context.raise_if_cancelled()
+        text_content = TextProcessor.extract_text_content(response.content)
+        result = json_converter.extract(text_content, use_converter=self.thinking_moderator)
+
+        should_end = forced_termination or result.get("decision") == "end"
+        termination_reason = forced_reason or result.get("termination_reason", "moderator_decision")
+
+        if should_end:
+            final_answer = result.get("final_answer")
+            if not final_answer:
+                logger.warning(
+                    "No final_answer from moderator (forced=%s), using expert answer fallback",
+                    forced_termination,
+                )
+                answer = state.get("current_answer", {})
+                final_answer = f"""## 回答
+
+{answer.get('details', '')}
+
+## 结论
+
+{answer.get('conclusion', '')}
+"""
+
+            return {
+                "status": "completed",
+                "final_answer": final_answer,
+                "termination_reason": termination_reason,
+                "previous_summary": state.get("previous_summary", "") + "\n" + result.get("iteration_summary", ""),
+                "moderator_synthesize_analysis": {
+                    "feedback_validation": result.get("feedback_validation"),
+                    "decision": "end",
+                    "improvement_guidance": result.get("improvement_guidance"),
+                    "iteration_summary": result.get("iteration_summary"),
+                    "termination_reason": termination_reason
+                }
+            }
+
+        iteration_summary = result.get("iteration_summary", f"第{iteration}轮: 评分{score}, 继续改进。")
+        new_summary = state.get("previous_summary", "") + "\n" + iteration_summary
+
+        return {
+            "iteration": iteration + 1,
+            "improvement_guidance": result.get("improvement_guidance", "请继续改进回答。"),
+            "previous_summary": new_summary.strip(),
+            "current_task": result.get("improvement_guidance", state["current_task"]),
+            "moderator_synthesize_analysis": {
+                "feedback_validation": result.get("feedback_validation"),
+                "decision": result.get("decision"),
+                "improvement_guidance": result.get("improvement_guidance"),
+                "iteration_summary": result.get("iteration_summary"),
+                "termination_reason": None
+            }
+        }
+
     async def _load_debate_state(
         self,
         conversation_id: str
@@ -527,7 +788,8 @@ class MultiAgentDebateWorkflow:
     async def stream(
         self,
         question: str,
-        conversation_id: str = None
+        conversation_id: str = None,
+        run_context: Optional[RunContext] = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Stream the multi-agent debate process.
@@ -573,161 +835,150 @@ class MultiAgentDebateWorkflow:
         )
 
         try:
+            async with use_run_context(run_context):
+                if run_context:
+                    run_context.raise_if_cancelled()
             # Yield initial phase
-            yield {
-                "type": "phase_start",
-                "phase": "moderator_init",
-                "iteration": 0,
-                "message": "Moderator analyzing question complexity..."
-            }
-
-            # Run the graph step by step
-            current_state = initial_state
-
-            # Step 1: Moderator Init
-            result = self.graph.nodes["moderator_init"].invoke(current_state)
-            current_state = {**current_state, **result}
-
-            # Emit moderator init analysis
-            if "moderator_init_analysis" in current_state:
-                analysis = current_state["moderator_init_analysis"]
                 yield {
-                    "type": "moderator_init",
-                    "analysis": analysis
+                    "type": "phase_start",
+                    "phase": "moderator_init",
+                    "iteration": 0,
+                    "message": "Moderator analyzing question complexity..."
                 }
-                # Store analysis as message
-                if conversation_id:
-                    content_str = json.dumps(analysis, ensure_ascii=False)
-                    print(f"[Debug] Storing moderator_init: content type={type(content_str).__name__}, content_len={len(content_str)}")
-                    await self.storage.add_message(
-                        conversation_id=conversation_id,
-                        role="system",
-                        content=content_str,
-                        message_type="moderator_init",
-                        metadata={"analysis": analysis}
-                    )
+                current_state = initial_state
 
-            # Check if direct answer
-            if current_state.get("status") == "direct_answer":
-                # Convert math delimiters for streaming response
+                result = await self._moderator_init_step(current_state, run_context=run_context)
+                current_state = {**current_state, **result}
+
+                if "moderator_init_analysis" in current_state:
+                    analysis = current_state["moderator_init_analysis"]
+                    yield {
+                        "type": "moderator_init",
+                        "analysis": analysis
+                    }
+                    if conversation_id:
+                        await self.storage.add_message(
+                            conversation_id=conversation_id,
+                            role="system",
+                            content=json.dumps(analysis, ensure_ascii=False),
+                            message_type="moderator_init",
+                            metadata={"analysis": analysis}
+                        )
+
+                if current_state.get("status") == "direct_answer":
+                    converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
+                    yield {
+                        "type": "done",
+                        "final_answer": converted_answer,
+                        "was_direct_answer": True,
+                        "termination_reason": "simple_question",
+                        "total_iterations": 0
+                    }
+                    if conversation_id:
+                        await self.storage.add_message(
+                            conversation_id=conversation_id,
+                            role="assistant",
+                            content=converted_answer,
+                            model=self.moderator_model,
+                            message_type="final_answer"
+                        )
+                        await self._save_debate_state(conversation_id, current_state)
+                    return
+
+                while current_state.get("status") != "completed":
+                    if run_context:
+                        run_context.raise_if_cancelled()
+                    iteration = current_state.get("iteration", 1)
+
+                    yield {
+                        "type": "phase_start",
+                        "phase": "expert_generate",
+                        "iteration": iteration,
+                        "message": f"Expert generating answer (iteration {iteration})..."
+                    }
+
+                    result = await self._expert_generate_step(current_state, run_context=run_context)
+                    current_state = {**current_state, **result}
+
+                    yield {
+                        "type": "expert_answer",
+                        "iteration": iteration,
+                        "answer": current_state["current_answer"]
+                    }
+
+                    yield {
+                        "type": "phase_start",
+                        "phase": "critic_review",
+                        "iteration": iteration,
+                        "message": f"Critic reviewing answer (iteration {iteration})..."
+                    }
+
+                    result = await self._critic_review_step(current_state, run_context=run_context)
+                    current_state = {**current_state, **result}
+
+                    yield {
+                        "type": "critic_review",
+                        "iteration": iteration,
+                        "review": current_state["current_review"]
+                    }
+
+                    yield {
+                        "type": "phase_start",
+                        "phase": "moderator_synthesize",
+                        "iteration": iteration,
+                        "message": f"Moderator synthesizing results (iteration {iteration})..."
+                    }
+
+                    result = await self._moderator_synthesize_step(current_state, run_context=run_context)
+                    current_state = {**current_state, **result}
+
+                    if "moderator_synthesize_analysis" in current_state:
+                        yield {
+                            "type": "moderator_synthesize",
+                            "iteration": iteration,
+                            "analysis": current_state["moderator_synthesize_analysis"]
+                        }
+                        if conversation_id:
+                            await self.storage.add_message(
+                                conversation_id=conversation_id,
+                                role="system",
+                                content=json.dumps(current_state["moderator_synthesize_analysis"], ensure_ascii=False),
+                                message_type="moderator_synthesize",
+                                iteration=iteration,
+                                metadata={"analysis": current_state["moderator_synthesize_analysis"]}
+                            )
+
+                    yield {
+                        "type": "iteration_complete",
+                        "iteration": iteration,
+                        "status": current_state.get("status"),
+                        "score": current_state.get("current_review", {}).get("overall_score"),
+                        "summary": current_state.get("previous_summary", "")
+                    }
+
                 converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
                 yield {
                     "type": "done",
                     "final_answer": converted_answer,
-                    "was_direct_answer": True,
-                    "termination_reason": "simple_question",
-                    "total_iterations": 0
+                    "was_direct_answer": False,
+                    "termination_reason": current_state.get("termination_reason"),
+                    "total_iterations": current_state.get("iteration", 1)
                 }
-                # Store final answer and save debate state
+
                 if conversation_id:
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=converted_answer,
-                        model=self.moderator_model,
+                        model=self.expert_model,
                         message_type="final_answer"
                     )
-                    # Save debate state for next round (even for direct answers)
                     await self._save_debate_state(conversation_id, current_state)
-                return
 
-            # Expert-Critic loop
-            while current_state.get("status") != "completed":
-                iteration = current_state.get("iteration", 1)
-
-                # Expert phase
-                yield {
-                    "type": "phase_start",
-                    "phase": "expert_generate",
-                    "iteration": iteration,
-                    "message": f"Expert generating answer (iteration {iteration})..."
-                }
-
-                result = self.graph.nodes["expert_generate"].invoke(current_state)
-                current_state = {**current_state, **result}
-
-                yield {
-                    "type": "expert_answer",
-                    "iteration": iteration,
-                    "answer": current_state["current_answer"]
-                }
-
-                # Critic phase
-                yield {
-                    "type": "phase_start",
-                    "phase": "critic_review",
-                    "iteration": iteration,
-                    "message": f"Critic reviewing answer (iteration {iteration})..."
-                }
-
-                result = self.graph.nodes["critic_review"].invoke(current_state)
-                current_state = {**current_state, **result}
-
-                yield {
-                    "type": "critic_review",
-                    "iteration": iteration,
-                    "review": current_state["current_review"]
-                }
-
-                # Moderator synthesize phase
-                yield {
-                    "type": "phase_start",
-                    "phase": "moderator_synthesize",
-                    "iteration": iteration,
-                    "message": f"Moderator synthesizing results (iteration {iteration})..."
-                }
-
-                result = self.graph.nodes["moderator_synthesize"].invoke(current_state)
-                current_state = {**current_state, **result}
-
-                # Emit moderator synthesize analysis
-                if "moderator_synthesize_analysis" in current_state:
-                    yield {
-                        "type": "moderator_synthesize",
-                        "iteration": iteration,
-                        "analysis": current_state["moderator_synthesize_analysis"]
-                    }
-                    # Store analysis as message
-                    if conversation_id:
-                        await self.storage.add_message(
-                            conversation_id=conversation_id,
-                            role="system",
-                            content=json.dumps(current_state["moderator_synthesize_analysis"], ensure_ascii=False),
-                            message_type="moderator_synthesize",
-                            iteration=iteration,
-                            metadata={"analysis": current_state["moderator_synthesize_analysis"]}
-                        )
-
-                yield {
-                    "type": "iteration_complete",
-                    "iteration": iteration,
-                    "status": current_state.get("status"),
-                    "score": current_state.get("current_review", {}).get("overall_score"),
-                    "summary": current_state.get("previous_summary", "")
-                }
-
-            # Final result - convert math delimiters for streaming response
-            converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
-            yield {
-                "type": "done",
-                "final_answer": converted_answer,
-                "was_direct_answer": False,
-                "termination_reason": current_state.get("termination_reason"),
-                "total_iterations": current_state.get("iteration", 1)
-            }
-
-            # Store final answer and save debate state
-            if conversation_id:
-                await self.storage.add_message(
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=converted_answer,
-                    model=self.expert_model,
-                    message_type="final_answer"
-                )
-                # Save debate state for next round
-                await self._save_debate_state(conversation_id, current_state)
-
+        except asyncio.CancelledError:
+            raise
+        except RunCancelledError:
+            raise
         except Exception as e:
             logger.error(f"Multi-agent workflow error: {e}")
             yield {
@@ -738,7 +989,8 @@ class MultiAgentDebateWorkflow:
     async def invoke(
         self,
         question: str,
-        conversation_id: str = None
+        conversation_id: str = None,
+        run_context: Optional[RunContext] = None,
     ) -> dict:
         """
         Run the complete multi-agent debate and return final result.
@@ -751,7 +1003,7 @@ class MultiAgentDebateWorkflow:
             dict with final_answer, termination_reason, total_iterations
         """
         result = None
-        async for event in self.stream(question, conversation_id):
+        async for event in self.stream(question, conversation_id, run_context=run_context):
             if event["type"] == "done":
                 result = event
             elif event["type"] == "error":

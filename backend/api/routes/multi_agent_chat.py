@@ -5,9 +5,10 @@ Provides endpoints for the multi-agent debate workflow with
 Moderator-Expert-Critic collaboration.
 """
 
+import asyncio
 import json
 import uuid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.api.schemas import (
@@ -16,7 +17,9 @@ from backend.api.schemas import (
     MultiAgentModelConfig,
     ThinkingConfig
 )
+from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.multi_agent import MultiAgentDebateWorkflow
+from backend.core.run_manager import RunCancelledError
 from backend.storage import get_storage
 from backend.config import settings
 from backend.providers import ProviderFactory, ProviderRegistry
@@ -207,7 +210,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
 
 
 @router.post("/stream")
-async def multi_agent_chat_stream(request: MultiAgentChatRequest):
+async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChatRequest):
     """
     Send a message and get a streaming multi-agent debate response.
 
@@ -236,8 +239,13 @@ async def multi_agent_chat_stream(request: MultiAgentChatRequest):
     # Extract thinking configuration
     thinking = request.thinking or ThinkingConfig()
 
+    run_context = await run_manager.create_run(mode="debate", conversation_id=conversation_id)
+
     async def generate():
         """Generate SSE stream of debate events."""
+        task = asyncio.current_task()
+        if task:
+            await run_context.register_task(task)
         try:
             workflow = get_workflow(
                 moderator_model=moderator_model,
@@ -250,17 +258,36 @@ async def multi_agent_chat_stream(request: MultiAgentChatRequest):
                 thinking_critic=thinking.critic
             )
 
-            async for event in workflow.stream(request.message, conversation_id):
+            async for event in workflow.stream(
+                request.message,
+                conversation_id,
+                run_context=run_context,
+            ):
+                if await http_request.is_disconnected():
+                    await run_context.cancel()
+                    raise RunCancelledError("Client disconnected")
                 # Format as SSE event
                 event_data = json.dumps(event, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
 
+        except asyncio.CancelledError:
+            await run_context.cancel()
+            await persist_cancellation_notice(_storage, conversation_id)
+        except RunCancelledError:
+            await persist_cancellation_notice(_storage, conversation_id)
+            if not await http_request.is_disconnected():
+                event_data = json.dumps({"type": "cancelled", "message": CANCELLATION_MESSAGE}, ensure_ascii=False)
+                yield f"data: {event_data}\n\n"
         except Exception as e:
             error_event = json.dumps({
                 "type": "error",
                 "error": str(e)
             }, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
+        finally:
+            if task:
+                await run_context.unregister_task(task)
+            await run_manager.finish_run(run_context.run_id)
 
     return StreamingResponse(
         generate(),
@@ -269,6 +296,7 @@ async def multi_agent_chat_stream(request: MultiAgentChatRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
+            "X-Run-ID": run_context.run_id,
             "X-Moderator-Model": moderator_model,
             "X-Expert-Model": expert_model,
             "X-Critic-Model": critic_model

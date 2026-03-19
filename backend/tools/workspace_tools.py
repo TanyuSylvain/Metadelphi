@@ -5,6 +5,7 @@ Factory function that creates LangChain tools bound to a workspace directory.
 All file operations are sandboxed within the workspace via path validation.
 """
 
+import asyncio
 import os
 import re
 import sys
@@ -12,6 +13,8 @@ import subprocess
 import logging
 from typing import List
 from langchain_core.tools import tool
+
+from backend.core.run_manager import get_current_run_context
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,66 @@ EXEC_TIMEOUT = 120
 
 # Regex for validating package names
 PACKAGE_NAME_RE = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9._-]*(\[[\w,]+\])?$')
+
+
+async def _run_subprocess(
+    args,
+    cwd: str,
+    timeout: int,
+    use_shell: bool = False,
+    use_process_group: bool = False,
+) -> tuple[str, str, int]:
+    """Run a subprocess with cancellation-aware termination."""
+    run_context = get_current_run_context()
+
+    if use_shell:
+        process = await asyncio.create_subprocess_shell(
+            args,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=use_process_group,
+        )
+    else:
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=use_process_group,
+        )
+
+    if run_context:
+        await run_context.register_process(process, use_process_group=use_process_group)
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+        return (
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
+            process.returncode or 0,
+        )
+    except asyncio.CancelledError:
+        if run_context:
+            await run_context.cancel()
+        raise
+    finally:
+        if run_context:
+            await run_context.unregister_process(process)
+
+
+def _format_subprocess_output(stdout: str, stderr: str, returncode: int, success_message: str) -> str:
+    """Format subprocess stdout/stderr in the existing UI-friendly structure."""
+    output = ""
+    if stdout:
+        output += stdout
+    if stderr:
+        if output:
+            output += "\n"
+        output += f"STDERR:\n{stderr}"
+    if returncode != 0:
+        output = f"Exit code: {returncode}\n{output}"
+    return output if output else success_message
 
 
 def resolve_in_workspace(workspace_path: str, file_path: str) -> str:
@@ -153,68 +216,61 @@ def create_workspace_tools(workspace_path: str) -> List:
             return f"Error listing directory: {str(e)}"
 
     @tool
-    def python_execute(code: str) -> str:
+    async def python_execute(code: str) -> str:
         """Execute Python code in a subprocess within the workspace directory. Has a 120-second timeout.
 
         Args:
             code: Python code to execute
         """
         try:
-            result = subprocess.run(
+            stdout, stderr, returncode = await _run_subprocess(
                 ["python", "-c", code],
                 cwd=workspace_abs,
-                capture_output=True,
-                text=True,
-                timeout=EXEC_TIMEOUT
+                timeout=EXEC_TIMEOUT,
             )
-            output = ""
-            if result.stdout:
-                output += result.stdout
-            if result.stderr:
-                if output:
-                    output += "\n"
-                output += f"STDERR:\n{result.stderr}"
-            if result.returncode != 0:
-                output = f"Exit code: {result.returncode}\n{output}"
-            return output if output else "Code executed successfully (no output)."
+            return _format_subprocess_output(
+                stdout,
+                stderr,
+                returncode,
+                "Code executed successfully (no output).",
+            )
         except subprocess.TimeoutExpired:
+            return f"Error: Execution timed out after {EXEC_TIMEOUT} seconds."
+        except asyncio.TimeoutError:
             return f"Error: Execution timed out after {EXEC_TIMEOUT} seconds."
         except Exception as e:
             return f"Error executing code: {str(e)}"
 
     @tool
-    def bash_execute(command: str) -> str:
+    async def bash_execute(command: str) -> str:
         """Execute a bash command in the workspace directory. Has a 120-second timeout.
 
         Args:
             command: Bash command to execute
         """
         try:
-            result = subprocess.run(
+            stdout, stderr, returncode = await _run_subprocess(
                 command,
-                shell=True,
                 cwd=workspace_abs,
-                capture_output=True,
-                text=True,
-                timeout=EXEC_TIMEOUT
+                timeout=EXEC_TIMEOUT,
+                use_shell=True,
+                use_process_group=True,
             )
-            output = ""
-            if result.stdout:
-                output += result.stdout
-            if result.stderr:
-                if output:
-                    output += "\n"
-                output += f"STDERR:\n{result.stderr}"
-            if result.returncode != 0:
-                output = f"Exit code: {result.returncode}\n{output}"
-            return output if output else "Command executed successfully (no output)."
+            return _format_subprocess_output(
+                stdout,
+                stderr,
+                returncode,
+                "Command executed successfully (no output).",
+            )
         except subprocess.TimeoutExpired:
+            return f"Error: Command timed out after {EXEC_TIMEOUT} seconds."
+        except asyncio.TimeoutError:
             return f"Error: Command timed out after {EXEC_TIMEOUT} seconds."
         except Exception as e:
             return f"Error executing command: {str(e)}"
 
     @tool
-    def check_package(package_name: str) -> str:
+    async def check_package(package_name: str) -> str:
         """Check if a Python package is installed in the current environment.
 
         Args:
@@ -224,15 +280,14 @@ def create_workspace_tools(workspace_path: str) -> List:
             if not PACKAGE_NAME_RE.match(package_name):
                 return f"Error: Invalid package name: '{package_name}'"
 
-            result = subprocess.run(
+            stdout, stderr, returncode = await _run_subprocess(
                 [sys.executable, "-m", "pip", "show", package_name],
-                capture_output=True,
-                text=True,
-                timeout=30
+                cwd=workspace_abs,
+                timeout=30,
             )
-            if result.returncode == 0:
+            if returncode == 0:
                 # Extract version from output
-                for line in result.stdout.splitlines():
+                for line in stdout.splitlines():
                     if line.startswith("Version:"):
                         version = line.split(":", 1)[1].strip()
                         return f"Package '{package_name}' is installed. Version: {version}"
@@ -241,11 +296,13 @@ def create_workspace_tools(workspace_path: str) -> List:
                 return f"Package '{package_name}' is NOT installed."
         except subprocess.TimeoutExpired:
             return f"Error: Check timed out after 30 seconds."
+        except asyncio.TimeoutError:
+            return f"Error: Check timed out after 30 seconds."
         except Exception as e:
             return f"Error checking package: {str(e)}"
 
     @tool
-    def install_package(package_name: str) -> str:
+    async def install_package(package_name: str) -> str:
         """Install a Python package using pip into the current environment.
 
         Args:
@@ -255,23 +312,22 @@ def create_workspace_tools(workspace_path: str) -> List:
             if not PACKAGE_NAME_RE.match(package_name):
                 return f"Error: Invalid package name: '{package_name}'"
 
-            result = subprocess.run(
+            stdout, stderr, returncode = await _run_subprocess(
                 [sys.executable, "-m", "pip", "install", package_name],
-                capture_output=True,
-                text=True,
-                timeout=EXEC_TIMEOUT
+                cwd=workspace_abs,
+                timeout=EXEC_TIMEOUT,
             )
-            output = ""
-            if result.stdout:
-                output += result.stdout
-            if result.stderr:
+            output = stdout
+            if stderr:
                 if output:
                     output += "\n"
-                output += result.stderr
-            if result.returncode != 0:
+                output += stderr
+            if returncode != 0:
                 return f"Failed to install {package_name}:\n{output}"
             return f"Successfully installed {package_name}."
         except subprocess.TimeoutExpired:
+            return f"Error: Installation timed out after {EXEC_TIMEOUT} seconds."
+        except asyncio.TimeoutError:
             return f"Error: Installation timed out after {EXEC_TIMEOUT} seconds."
         except Exception as e:
             return f"Error installing package: {str(e)}"

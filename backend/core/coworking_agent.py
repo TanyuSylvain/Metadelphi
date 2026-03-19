@@ -10,6 +10,7 @@ import os
 import json
 import logging
 import re
+import asyncio
 from typing import Optional, AsyncGenerator, Dict, Any, List
 
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -30,6 +31,7 @@ from backend.utils.parallel_tools import (
 from backend.tools.workspace_tools import create_workspace_tools
 from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
+from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +319,8 @@ class CoworkingAgent:
         conversation_id: str,
         workspace_path: str,
         max_iterations: int = 25,
-        web_search: bool = False
+        web_search: bool = False,
+        run_context: Optional[RunContext] = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Stream the coworking agent's response with SSE events.
@@ -415,290 +418,302 @@ class CoworkingAgent:
                 "message": session_state["reset_notice"],
             }
 
+        assistant_saved = False
+        file_state_recomputed = False
+
         try:
+            async with use_run_context(run_context):
+                if run_context:
+                    run_context.raise_if_cancelled()
             # === Planning + ReAct Loop ===
-            while iteration < max_iterations:
-                iteration += 1
+                while iteration < max_iterations:
+                    if run_context:
+                        run_context.raise_if_cancelled()
+                    iteration += 1
 
-                # Stream agent response token-by-token
-                full_content = ""
-                tool_calls = []
-                buffered_text = ""
-                saw_tool_call_chunks = False
-                round_started = False
+                    # Stream agent response token-by-token
+                    full_content = ""
+                    tool_calls = []
+                    buffered_text = ""
+                    saw_tool_call_chunks = False
+                    round_started = False
 
-                async for chunk in llm_with_tools.astream(chat_messages):
-                    # Accumulate content
-                    if hasattr(chunk, 'content') and chunk.content:
-                        text = TextProcessor.extract_text_content(chunk.content)
-                        if text:
-                            full_content += text
-                            if saw_tool_call_chunks:
-                                if not round_started:
-                                    yield {"type": "round_start", "round": iteration}
-                                    round_started = True
-                                yield {
-                                    "type": "reasoning_chunk",
-                                    "round": iteration,
-                                    "content": text,
-                                }
-                            else:
-                                buffered_text += text
-
-                    # Accumulate tool calls from streaming chunks
-                    if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
-                        if not saw_tool_call_chunks:
-                            saw_tool_call_chunks = True
-                            if iteration == 1:
-                                plan_text = buffered_text.strip()
-                                if plan_text and not plan_emitted:
-                                    yield {
-                                        "type": "plan_ready",
-                                        "steps": _extract_plan_steps(plan_text),
-                                        "raw_text": plan_text,
-                                    }
-                                    plan_emitted = True
-                                buffered_text = ""
-                            else:
-                                yield {"type": "round_start", "round": iteration}
-                                round_started = True
-                                if buffered_text:
+                    async for chunk in llm_with_tools.astream(chat_messages):
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        # Accumulate content
+                        if hasattr(chunk, 'content') and chunk.content:
+                            text = TextProcessor.extract_text_content(chunk.content)
+                            if text:
+                                full_content += text
+                                if saw_tool_call_chunks:
+                                    if not round_started:
+                                        yield {"type": "round_start", "round": iteration}
+                                        round_started = True
                                     yield {
                                         "type": "reasoning_chunk",
                                         "round": iteration,
-                                        "content": buffered_text,
+                                        "content": text,
                                     }
+                                else:
+                                    buffered_text += text
+
+                        # Accumulate tool calls from streaming chunks
+                        if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
+                            if not saw_tool_call_chunks:
+                                saw_tool_call_chunks = True
+                                if iteration == 1:
+                                    plan_text = buffered_text.strip()
+                                    if plan_text and not plan_emitted:
+                                        yield {
+                                            "type": "plan_ready",
+                                            "steps": _extract_plan_steps(plan_text),
+                                            "raw_text": plan_text,
+                                        }
+                                        plan_emitted = True
                                     buffered_text = ""
+                                else:
+                                    yield {"type": "round_start", "round": iteration}
+                                    round_started = True
+                                    if buffered_text:
+                                        yield {
+                                            "type": "reasoning_chunk",
+                                            "round": iteration,
+                                            "content": buffered_text,
+                                        }
+                                        buffered_text = ""
 
-                        for tc_chunk in chunk.tool_call_chunks:
-                            # Find or create the tool call entry
-                            tc_idx = tc_chunk.get("index", 0)
-                            while len(tool_calls) <= tc_idx:
-                                tool_calls.append({"id": "", "name": "", "args": ""})
-                            if tc_chunk.get("id"):
-                                tool_calls[tc_idx]["id"] = tc_chunk["id"]
-                            if tc_chunk.get("name"):
-                                tool_calls[tc_idx]["name"] = tc_chunk["name"]
-                            if tc_chunk.get("args"):
-                                tool_calls[tc_idx]["args"] += tc_chunk["args"]
+                            for tc_chunk in chunk.tool_call_chunks:
+                                tc_idx = tc_chunk.get("index", 0)
+                                while len(tool_calls) <= tc_idx:
+                                    tool_calls.append({"id": "", "name": "", "args": ""})
+                                if tc_chunk.get("id"):
+                                    tool_calls[tc_idx]["id"] = tc_chunk["id"]
+                                if tc_chunk.get("name"):
+                                    tool_calls[tc_idx]["name"] = tc_chunk["name"]
+                                if tc_chunk.get("args"):
+                                    tool_calls[tc_idx]["args"] += tc_chunk["args"]
 
-                # If streaming didn't give us tool_calls via chunks, do a non-streaming
-                # fallback to get the complete message with tool_calls
-                if not tool_calls:
-                    # Some models stop after producing a numbered plan on later turns.
-                    # Reprompt once to continue with tool execution instead of ending early.
-                    if _looks_like_plan_only_response(full_content) and iteration < max_iterations:
-                        if not plan_emitted and full_content.strip():
+                    if not tool_calls:
+                        if _looks_like_plan_only_response(full_content) and iteration < max_iterations:
+                            if not plan_emitted and full_content.strip():
+                                yield {
+                                    "type": "plan_ready",
+                                    "steps": _extract_plan_steps(full_content.strip()),
+                                    "raw_text": full_content.strip(),
+                                }
+                                plan_emitted = True
+                            chat_messages.append(AIMessage(content=full_content))
+                            chat_messages.append(HumanMessage(
+                                content=(
+                                    "Continue by executing the plan now using the available tools. "
+                                    "Do not restate the plan unless needed."
+                                )
+                            ))
+                            continue
+
+                        ai_msg = AIMessage(content=full_content)
+                        chat_messages.append(ai_msg)
+                        final_response = TextProcessor.convert_math_delimiters(full_content)
+                        if final_response:
+                            yield {"type": "final_start"}
+                            yield {"type": "final_chunk", "content": final_response}
+                        break
+
+                    parsed_tool_calls = []
+                    for tc in tool_calls:
+                        if tc["name"]:
+                            try:
+                                args = json.loads(tc["args"]) if tc["args"] else {}
+                            except json.JSONDecodeError:
+                                args = {"input": tc["args"]}
+                            parsed_tool_calls.append({
+                                "id": tc["id"] or f"call_{iteration}_{tc['name']}",
+                                "name": tc["name"],
+                                "args": args
+                            })
+
+                    if not parsed_tool_calls:
+                        ai_msg = AIMessage(content=full_content)
+                        chat_messages.append(ai_msg)
+                        final_response = TextProcessor.convert_math_delimiters(full_content)
+                        if final_response:
+                            yield {"type": "final_start"}
+                            yield {"type": "final_chunk", "content": final_response}
+                        break
+
+                    ai_msg = AIMessage(
+                        content=full_content,
+                        tool_calls=parsed_tool_calls
+                    )
+                    chat_messages.append(ai_msg)
+
+                    tool_specs = [
+                        ToolCallSpec(
+                            id=tc["id"],
+                            name=tc["name"],
+                            args=tc["args"],
+                            index=idx
+                        )
+                        for idx, tc in enumerate(parsed_tool_calls)
+                    ]
+
+                    tc_info_map: Dict[str, Dict[str, Any]] = {
+                        tc["id"]: tc for tc in parsed_tool_calls
+                    }
+
+                    for spec in tool_specs:
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        if not round_started:
+                            yield {"type": "round_start", "round": iteration}
+                            round_started = True
+                        yield {
+                            "type": "tool_start",
+                            "round": iteration,
+                            "tool_name": spec.name,
+                            "tool_input": spec.args,
+                            "tool_call_id": spec.id,
+                        }
+
+                    workspace_before = set(_list_workspace_files(workspace_path))
+
+                    results: List[ToolResult] = await execute_tools_parallel(
+                        tool_map=tool_map,
+                        tool_calls=tool_specs,
+                        max_concurrency=settings.max_tool_concurrency,
+                        timeout=60.0,
+                        run_context=run_context,
+                    )
+
+                    for result in results:
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        tc_info = tc_info_map.get(result.tool_call_id, {})
+                        tool_name = tc_info.get("name", "unknown")
+
+                        display_result = result.content
+                        if len(display_result) > 2000:
+                            display_result = display_result[:2000] + "\n[... truncated]"
+
+                        yield {
+                            "type": "tool_result",
+                            "round": iteration,
+                            "tool_name": tool_name,
+                            "output": display_result,
+                            "success": result.success,
+                            "tool_call_id": result.tool_call_id,
+                        }
+
+                        tool_message = ToolMessage(
+                            content=result.content,
+                            tool_call_id=result.tool_call_id
+                        )
+                        chat_messages.append(tool_message)
+
+                        if "search" in tool_name.lower():
+                            extract_citations_from_result(result.content, citations)
+
+                    workspace_after = set(_list_workspace_files(workspace_path))
+                    baseline_set = set(session_state["baseline_files"])
+                    added_files = sorted(workspace_after - workspace_before)
+                    removed_files = sorted(workspace_before - workspace_after)
+
+                    for file_path in added_files:
+                        if file_path not in baseline_set:
+                            try:
+                                file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+                            except Exception:
+                                file_size = 0
                             yield {
-                                "type": "plan_ready",
-                                "steps": _extract_plan_steps(full_content.strip()),
-                                "raw_text": full_content.strip(),
+                                "type": "file_created",
+                                "file_path": file_path,
+                                "file_size": file_size,
                             }
-                            plan_emitted = True
-                        chat_messages.append(AIMessage(content=full_content))
-                        chat_messages.append(HumanMessage(
-                            content=(
-                                "Continue by executing the plan now using the available tools. "
-                                "Do not restate the plan unless needed."
-                            )
-                        ))
-                        continue
 
-                    # Check if there's an accumulated response with no tool calls = done
-                    ai_msg = AIMessage(content=full_content)
-                    chat_messages.append(ai_msg)
-                    final_response = TextProcessor.convert_math_delimiters(full_content)
+                    for file_path in removed_files:
+                        if file_path in baseline_set:
+                            yield {
+                                "type": "file_deleted",
+                                "file_path": file_path,
+                            }
+
+                    if round_started:
+                        yield {"type": "round_complete", "round": iteration}
+
+                else:
+                    final_response = TextProcessor.convert_math_delimiters(
+                        full_content or "Reached maximum iteration limit."
+                    )
                     if final_response:
                         yield {"type": "final_start"}
                         yield {"type": "final_chunk", "content": final_response}
-                    break
-
-                # We have tool calls — build the proper AIMessage with tool_calls
-                parsed_tool_calls = []
-                for tc in tool_calls:
-                    if tc["name"]:
-                        try:
-                            args = json.loads(tc["args"]) if tc["args"] else {}
-                        except json.JSONDecodeError:
-                            args = {"input": tc["args"]}
-                        parsed_tool_calls.append({
-                            "id": tc["id"] or f"call_{iteration}_{tc['name']}",
-                            "name": tc["name"],
-                            "args": args
-                        })
-
-                if not parsed_tool_calls:
-                    # No valid tool calls found, treat as final response
-                    ai_msg = AIMessage(content=full_content)
-                    chat_messages.append(ai_msg)
-                    final_response = TextProcessor.convert_math_delimiters(full_content)
-                    if final_response:
-                        yield {"type": "final_start"}
-                        yield {"type": "final_chunk", "content": final_response}
-                    break
-
-                # Append AI message with tool calls to history
-                ai_msg = AIMessage(
-                    content=full_content,
-                    tool_calls=parsed_tool_calls
-                )
-                chat_messages.append(ai_msg)
-
-                # Build tool call specs for parallel execution
-                tool_specs = [
-                    ToolCallSpec(
-                        id=tc["id"],
-                        name=tc["name"],
-                        args=tc["args"],
-                        index=idx
-                    )
-                    for idx, tc in enumerate(parsed_tool_calls)
-                ]
-
-                # Build a mapping from tool_call_id to original tool call info
-                tc_info_map: Dict[str, Dict[str, Any]] = {
-                    tc["id"]: tc for tc in parsed_tool_calls
-                }
-
-                # Yield tool_start events for all tools upfront
-                for spec in tool_specs:
-                    if not round_started:
-                        yield {"type": "round_start", "round": iteration}
-                        round_started = True
                     yield {
-                        "type": "tool_start",
-                        "round": iteration,
-                        "tool_name": spec.name,
-                        "tool_input": spec.args,
-                        "tool_call_id": spec.id,
+                        "type": "error",
+                        "error": f"Reached maximum of {max_iterations} iterations"
                     }
 
-                workspace_before = set(_list_workspace_files(workspace_path))
+                final_response = TextProcessor.convert_math_delimiters(final_response)
 
-                # Execute tools in parallel
-                results: List[ToolResult] = await execute_tools_parallel(
-                    tool_map=tool_map,
-                    tool_calls=tool_specs,
-                    max_concurrency=settings.max_tool_concurrency,
-                    timeout=60.0
-                )
-
-                # Process results in original order
-                for result in results:
-                    tc_info = tc_info_map.get(result.tool_call_id, {})
-                    tool_name = tc_info.get("name", "unknown")
-
-                    # Truncate very long results for display
-                    display_result = result.content
-                    if len(display_result) > 2000:
-                        display_result = display_result[:2000] + "\n[... truncated]"
-
-                    yield {
-                        "type": "tool_result",
-                        "round": iteration,
-                        "tool_name": tool_name,
-                        "output": display_result,
-                        "success": result.success,
-                        "tool_call_id": result.tool_call_id,
-                    }
-
-                    # Add tool result to message history
-                    tool_message = ToolMessage(
-                        content=result.content,
-                        tool_call_id=result.tool_call_id
-                    )
-                    chat_messages.append(tool_message)
-
-                    # Extract citations from search tool results
-                    if "search" in tool_name.lower():
-                        extract_citations_from_result(result.content, citations)
-
-                workspace_after = set(_list_workspace_files(workspace_path))
-                baseline_set = set(session_state["baseline_files"])
-                added_files = sorted(workspace_after - workspace_before)
-                removed_files = sorted(workspace_before - workspace_after)
-
-                for file_path in added_files:
-                    if file_path not in baseline_set:
-                        try:
-                            file_size = os.path.getsize(os.path.join(workspace_path, file_path))
-                        except Exception:
-                            file_size = 0
-                        yield {
-                            "type": "file_created",
-                            "file_path": file_path,
-                            "file_size": file_size,
-                        }
-
-                for file_path in removed_files:
-                    if file_path in baseline_set:
-                        yield {
-                            "type": "file_deleted",
-                            "file_path": file_path,
-                        }
-
-                if round_started:
-                    yield {"type": "round_complete", "round": iteration}
-
-                # Continue the ReAct loop (agent will process tool results)
-
-            else:
-                # Hit max iterations
-                final_response = TextProcessor.convert_math_delimiters(
-                    full_content or "Reached maximum iteration limit."
-                )
                 if final_response:
-                    yield {"type": "final_start"}
-                    yield {"type": "final_chunk", "content": final_response}
-                yield {
-                    "type": "error",
-                    "error": f"Reached maximum of {max_iterations} iterations"
-                }
+                    await self.storage.add_message(
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=final_response,
+                        model=self.model_id
+                    )
+                    assistant_saved = True
 
-            # Convert math delimiters
-            final_response = TextProcessor.convert_math_delimiters(final_response)
-
-            # Save assistant response to storage
-            if final_response:
-                await self.storage.add_message(
+                final_file_state = await recompute_coworking_session_deltas(
+                    storage=self.storage,
                     conversation_id=conversation_id,
-                    role="assistant",
-                    content=final_response,
-                    model=self.model_id
+                    workspace_path=workspace_path,
+                    baseline_files=session_state["baseline_files"],
                 )
+                file_state_recomputed = True
 
-            final_file_state = await recompute_coworking_session_deltas(
-                storage=self.storage,
-                conversation_id=conversation_id,
-                workspace_path=workspace_path,
-                baseline_files=session_state["baseline_files"],
-            )
+                final_generated_files = []
+                for file_path in final_file_state["generated_files"]:
+                    try:
+                        file_size = os.path.getsize(os.path.join(workspace_path, file_path))
+                    except Exception:
+                        file_size = 0
+                    final_generated_files.append({"path": file_path, "size": file_size})
 
-            final_generated_files = []
-            for file_path in final_file_state["generated_files"]:
-                try:
-                    file_size = os.path.getsize(os.path.join(workspace_path, file_path))
-                except Exception:
-                    file_size = 0
-                final_generated_files.append({"path": file_path, "size": file_size})
+                if citations:
+                    yield {"type": "citations", "citations": citations}
 
-            # Emit citations if any were collected
-            if citations:
-                yield {"type": "citations", "citations": citations}
-
-            yield {
-                "type": "done",
-                "final_answer": final_response,
-                "generated_files": final_generated_files,
-                "deleted_files": final_file_state["deleted_files"],
-            }
-
+                yield {
+                    "type": "done",
+                    "final_answer": final_response,
+                    "generated_files": final_generated_files,
+                    "deleted_files": final_file_state["deleted_files"],
+                }
+        except asyncio.CancelledError:
+            raise
+        except RunCancelledError:
+            raise
         except Exception as e:
             logger.error(f"Coworking agent error: {str(e)}", exc_info=True)
             yield {
                 "type": "error",
                 "error": str(e)
             }
+        finally:
+            if final_response and not assistant_saved:
+                await self.storage.add_message(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=TextProcessor.convert_math_delimiters(final_response),
+                    model=self.model_id
+                )
+            if not file_state_recomputed:
+                await recompute_coworking_session_deltas(
+                    storage=self.storage,
+                    conversation_id=conversation_id,
+                    workspace_path=workspace_path,
+                    baseline_files=session_state["baseline_files"],
+                )
 
     async def invoke(
         self,
@@ -706,7 +721,8 @@ class CoworkingAgent:
         conversation_id: str,
         workspace_path: str,
         max_iterations: int = 25,
-        web_search: bool = False
+        web_search: bool = False,
+        run_context: Optional[RunContext] = None,
     ) -> dict:
         """
         Run the coworking agent and return the final result.
@@ -722,7 +738,14 @@ class CoworkingAgent:
             Dict with final_answer, generated_files, and deleted_files
         """
         result = {"final_answer": "", "generated_files": [], "deleted_files": []}
-        async for event in self.stream(question, conversation_id, workspace_path, max_iterations, web_search):
+        async for event in self.stream(
+            question,
+            conversation_id,
+            workspace_path,
+            max_iterations,
+            web_search,
+            run_context=run_context,
+        ):
             if event["type"] == "done":
                 result["final_answer"] = event.get("final_answer", "")
                 result["generated_files"] = event.get("generated_files", [])
