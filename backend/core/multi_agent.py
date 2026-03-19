@@ -715,7 +715,28 @@ class MultiAgentDebateWorkflow:
             return None
 
         metadata = conversation.get("metadata", {})
-        return metadata.get("debate_state")
+        stored_state = metadata.get("debate_state")
+        if not stored_state:
+            return None
+
+        return {
+            "previous_summary": stored_state.get("previous_summary", ""),
+            "conversation_context": stored_state.get("conversation_context", ""),
+            "timestamp": stored_state.get("timestamp"),
+            "active": stored_state.get("active", True),
+        }
+
+    def _build_debate_state_payload(
+        self,
+        previous_summary: str,
+        conversation_context: str,
+    ) -> dict:
+        """Build the reusable cross-debate state payload."""
+        return {
+            "previous_summary": previous_summary,
+            "conversation_context": conversation_context,
+            "timestamp": datetime.now().isoformat()
+        }
 
     async def _save_debate_state(
         self,
@@ -729,13 +750,32 @@ class MultiAgentDebateWorkflow:
             conversation_id: Conversation ID
             state: Current debate state
         """
-        debate_state = {
-            "previous_summary": state.get("previous_summary", ""),
-            "last_iteration": state.get("iteration", 0),
-            "conversation_context": await self._build_conversation_context(conversation_id),
-            "timestamp": datetime.now().isoformat()
-        }
+        debate_state = self._build_debate_state_payload(
+            previous_summary=state.get("previous_summary", ""),
+            conversation_context=await self._build_conversation_context(conversation_id),
+        )
+        await self.storage.update_debate_state(conversation_id, debate_state)
 
+    async def refresh_debate_context(
+        self,
+        conversation_id: str,
+        previous_summary: Optional[str] = None,
+    ) -> None:
+        """
+        Refresh cross-debate context without marking an interrupted debate as completed.
+
+        This is used after cancellation so the next debate can see the latest user turn,
+        while still starting a fresh round sequence from iteration 0.
+        """
+        existing_state = await self._load_debate_state(conversation_id) or {}
+        debate_state = self._build_debate_state_payload(
+            previous_summary=(
+                existing_state.get("previous_summary", "")
+                if previous_summary is None
+                else previous_summary
+            ),
+            conversation_context=await self._build_conversation_context(conversation_id),
+        )
         await self.storage.update_debate_state(conversation_id, debate_state)
 
     async def _build_conversation_context(

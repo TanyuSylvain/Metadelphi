@@ -36,6 +36,7 @@ class RunContext:
         self.mode = mode
         self.conversation_id = conversation_id
         self.cancel_event = asyncio.Event()
+        self.finished_event = asyncio.Event()
         self._tasks: set[asyncio.Task] = set()
         self._processes: set[ManagedProcess] = set()
         self._lock = asyncio.Lock()
@@ -102,6 +103,14 @@ class RunContext:
         )
         return True
 
+    def mark_finished(self) -> None:
+        """Mark the run as fully cleaned up and no longer active."""
+        self.finished_event.set()
+
+    async def wait_finished(self) -> None:
+        """Wait until the stream route has completed all cancellation cleanup."""
+        await self.finished_event.wait()
+
     async def _terminate_process(self, managed: ManagedProcess) -> None:
         process = managed.process
         if process.returncode is not None:
@@ -166,6 +175,7 @@ class RunManager:
             }
 
         cancelled_now = await context.cancel()
+        await context.wait_finished()
         return {
             "success": True,
             "run_id": run_id,

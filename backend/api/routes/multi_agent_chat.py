@@ -246,6 +246,7 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
         task = asyncio.current_task()
         if task:
             await run_context.register_task(task)
+        workflow = None
         try:
             workflow = get_workflow(
                 moderator_model=moderator_model,
@@ -271,10 +272,19 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
                 yield f"data: {event_data}\n\n"
 
         except asyncio.CancelledError:
+            current_task = asyncio.current_task()
+            if current_task:
+                while current_task.cancelling():
+                    current_task.uncancel()
+
             await run_context.cancel()
             await persist_cancellation_notice(_storage, conversation_id)
+            if workflow and conversation_id:
+                await workflow.refresh_debate_context(conversation_id)
         except RunCancelledError:
             await persist_cancellation_notice(_storage, conversation_id)
+            if workflow and conversation_id:
+                await workflow.refresh_debate_context(conversation_id)
             if not await http_request.is_disconnected():
                 event_data = json.dumps({"type": "cancelled", "message": CANCELLATION_MESSAGE}, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
@@ -288,6 +298,7 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
             if task:
                 await run_context.unregister_task(task)
             await run_manager.finish_run(run_context.run_id)
+            run_context.mark_finished()
 
     return StreamingResponse(
         generate(),

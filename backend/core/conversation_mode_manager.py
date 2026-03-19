@@ -82,7 +82,6 @@ class ConversationModeManager:
                 metadata["debate_state"] = {
                     "conversation_context": context,
                     "previous_summary": "",
-                    "last_iteration": 0
                 }
 
             message = "Previous conversation context prepared."

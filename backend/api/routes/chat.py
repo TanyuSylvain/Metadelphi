@@ -139,6 +139,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
             if task:
                 await run_context.unregister_task(task)
             await run_manager.finish_run(run_context.run_id)
+            run_context.mark_finished()
 
     return StreamingResponse(
         generate(),
