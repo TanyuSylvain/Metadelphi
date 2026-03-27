@@ -24,11 +24,26 @@ export class MarkdownRenderer {
     configureMarked() {
         if (!this.markedAvailable) return;
 
-        marked.setOptions({
-            breaks: true,
-            gfm: true,
-            headerIds: false,
-            mangle: false
+        marked.use({
+            renderer: {
+                code(codeOrToken, language) {
+                    let code, lang;
+                    if (typeof codeOrToken === 'object' && codeOrToken !== null) {
+                        code = codeOrToken.text;
+                        lang = codeOrToken.lang || '';
+                    } else {
+                        code = codeOrToken;
+                        lang = language || '';
+                    }
+                    if (typeof hljs !== 'undefined') {
+                        if (lang && hljs.getLanguage(lang)) {
+                            return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
+                        }
+                        return `<pre><code class="hljs">${hljs.highlightAuto(code).value}</code></pre>`;
+                    }
+                    return `<pre><code>${code}</code></pre>`;
+                }
+            }
         });
     }
 

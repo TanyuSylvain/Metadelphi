@@ -6,11 +6,13 @@
 import { MarkdownRenderer } from '../utils/markdown.js';
 import { getStorage, setStorage, purifyContent, copyToClipboard } from '../utils/helpers.js';
 import { ThinkParser } from '../utils/thinkParser.js';
+import { SmartScroller } from '../utils/smartScroller.js';
 
 export class MessageComponent {
     constructor(messagesContainer) {
         this.container = messagesContainer;
         this.renderer = new MarkdownRenderer();
+        this.smartScroller = new SmartScroller(this.container);
         // Store raw content for assistant messages to support re-rendering
         this.messageContents = new Map();
         // Store response-only content (without thinking) for copy button
@@ -232,7 +234,7 @@ export class MessageComponent {
         this.storeDebateMetadata(content, debateId, iteration);
 
         this.container.appendChild(messageEl);
-        this.scrollToBottom();
+        this.smartScroller.scrollToBottomIfNeeded();
 
         return messageEl;
     }
@@ -253,8 +255,12 @@ export class MessageComponent {
             messageEl.textContent = content;
         }
 
+        if (type === 'user') {
+            this.smartScroller.reset();
+        }
+
         this.container.appendChild(messageEl);
-        this.scrollToBottom();
+        this.smartScroller.scrollToBottomIfNeeded();
 
         return messageEl;
     }
@@ -285,7 +291,7 @@ export class MessageComponent {
             messageEl.appendChild(this.createCopyButton(msgId));
         }
 
-        this.scrollToBottom();
+        this.smartScroller.scrollToBottomIfNeeded();
     }
 
     /**
@@ -324,7 +330,7 @@ export class MessageComponent {
             }
         }
 
-        this.scrollToBottom();
+        this.smartScroller.scrollToBottomIfNeeded();
     }
 
     /**
@@ -389,7 +395,7 @@ export class MessageComponent {
             messageEl.appendChild(this.createCopyButton(msgId));
         }
 
-        this.scrollToBottom();
+        this.smartScroller.scrollToBottomIfNeeded();
     }
 
     /**

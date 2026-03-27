@@ -3,6 +3,8 @@
  * Displays coworking agent progress: plan, tool calls, and generated files
  */
 
+import { SmartScroller } from '../utils/smartScroller.js';
+
 export class ToolExecutionViewer {
     constructor(containerElement, apiClient) {
         this.container = containerElement;
@@ -12,6 +14,8 @@ export class ToolExecutionViewer {
         this.deletedFiles = [];
         this.workspacePath = '';
         this.baseURL = 'http://localhost:8000';
+        const scrollElement = containerElement.closest('.coworking-panel') || containerElement.parentElement;
+        this.smartScroller = scrollElement ? new SmartScroller(scrollElement) : null;
     }
 
     initialize() {
@@ -22,12 +26,14 @@ export class ToolExecutionViewer {
         this.toolCalls = [];
         this.generatedFiles = [];
         this.deletedFiles = [];
+        this.smartScroller?.reset();
         this.render();
     }
 
     clearForNewMessage() {
         this.toolCalls = [];
         // Keep session-level file state across messages
+        this.smartScroller?.reset();
         this.render();
     }
 
@@ -62,7 +68,7 @@ export class ToolExecutionViewer {
             status: 'running'
         });
         this.render();
-        this.scrollToBottom();
+        this.smartScroller?.scrollToBottomIfNeeded();
     }
 
     addToolResult(toolName, output, success, round = null, toolCallId = null) {
@@ -92,7 +98,7 @@ export class ToolExecutionViewer {
         }
 
         this.render();
-        this.scrollToBottom();
+        this.smartScroller?.scrollToBottomIfNeeded();
     }
 
     addFileCreated(filePath, fileSize) {
