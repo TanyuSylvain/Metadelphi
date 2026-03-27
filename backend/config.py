@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # Provider Base URLs
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     glm_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
-    minimax_base_url: str = "https://api.minimax.io/v1"
+    minimax_base_url: str = "https://api.minimaxi.com/v1"
     deepseek_base_url: str = "https://api.deepseek.com"
     openai_base_url: str = "https://api.openai.com/v1"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
