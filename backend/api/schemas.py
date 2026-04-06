@@ -65,6 +65,7 @@ class ModelInfo(BaseModel):
     description: str = Field(..., description="Model description")
     supports_thinking: bool = Field(False, description="Whether thinking mode can be enabled")
     thinking_locked: bool = Field(False, description="Whether thinking mode is always on and cannot be disabled")
+    is_image_model: bool = Field(False, description="Whether this model generates images instead of text")
 
 
 class ModelsResponse(BaseModel):

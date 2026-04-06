@@ -141,7 +141,8 @@ class ProviderFactory:
                     "model_name": model["name"],
                     "description": model["description"],
                     "supports_thinking": provider.supports_thinking(model_id),
-                    "thinking_locked": provider.is_thinking_locked(model_id)
+                    "thinking_locked": provider.is_thinking_locked(model_id),
+                    "is_image_model": provider.is_image_model(model_id),
                 })
 
         return result

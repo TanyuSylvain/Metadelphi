@@ -117,6 +117,8 @@ export class ChatApp {
         this.isWebSearchEnabled = false;
         this.isMultiAgentMode = false;
         this.isCoworkingMode = false;
+        this.isImageMode = false;
+        this.imageModeConversationStarted = false; // locks checkbox after first message
 
         // Debate panel visibility state
         this.debatePanelVisible = false;
@@ -228,6 +230,25 @@ export class ChatApp {
             setStorage('selectedModel', modelId);
             this.updateThinkingToggleState(modelId);
         });
+
+        // Image mode toggle
+        const imageModeToggle = document.getElementById('imageModeToggle');
+        if (imageModeToggle) {
+            imageModeToggle.addEventListener('change', (e) => {
+                if (this.imageModeConversationStarted) {
+                    // Locked — revert the checkbox silently
+                    e.target.checked = this.isImageMode;
+                    return;
+                }
+                this.isImageMode = e.target.checked;
+                this.modelSelector.setImageMode(this.isImageMode);
+                // Update thinking toggle visibility (no thinking for image models)
+                const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
+                if (thinkingContainer) {
+                    thinkingContainer.style.display = this.isImageMode ? 'none' : '';
+                }
+            });
+        }
 
         // Mode selector change
         if (this.modeSelector) {
@@ -687,7 +708,7 @@ export class ChatApp {
             simpleControls.style.display = this.isMultiAgentMode ? 'none' : 'flex';
         }
         if (thinkingContainer) {
-            thinkingContainer.style.display = this.isMultiAgentMode ? 'none' : 'flex';
+            thinkingContainer.style.display = (this.isMultiAgentMode || this.isImageMode) ? 'none' : 'flex';
         }
 
         // Show/hide web search toggle (visible in simple and coworking modes, hidden in debate)
@@ -812,6 +833,24 @@ export class ChatApp {
 
             await this.restoreCoworkingSessionState(conversationInfo);
 
+            // Restore image mode if this is an image conversation
+            if (conversationInfo.mode === 'image') {
+                this.isImageMode = true;
+                this.imageModeConversationStarted = true;
+                const imageModeToggle = document.getElementById('imageModeToggle');
+                if (imageModeToggle) {
+                    imageModeToggle.checked = true;
+                    imageModeToggle.disabled = true;
+                    imageModeToggle.title = 'Cannot change image mode during a conversation';
+                }
+                this.modelSelector.setImageMode(true);
+                // Hide thinking toggle for image mode
+                const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
+                if (thinkingContainer) {
+                    thinkingContainer.style.display = 'none';
+                }
+            }
+
             // Load the full history if conversation exists
             const history = await this.apiClient.getConversationHistory(this.conversationId);
             if (history && history.messages && history.messages.length > 0) {
@@ -870,6 +909,8 @@ export class ChatApp {
             await this.sendCoworkingMessage(message);
         } else if (this.isMultiAgentMode) {
             await this.sendMultiAgentMessage(message);
+        } else if (this.isImageMode) {
+            await this.sendImageMessage(message);
         } else {
             await this.sendSimpleMessage(message);
         }
@@ -973,6 +1014,78 @@ export class ChatApp {
                 this.messageComponent.addErrorMessage(
                     `Error: ${error.message}`
                 );
+            }
+        } finally {
+            this.setProcessing(false);
+            await this.refreshSidebarSafely();
+            this.resetRunState();
+            this.messageInput.focus();
+        }
+    }
+
+    /**
+     * Send a prompt to an image generation model and display the result.
+     */
+    async sendImageMessage(message) {
+        const modelId = this.modelSelector.getSelectedModel();
+        if (!modelId) {
+            this.messageComponent.addErrorMessage('Please select an image model');
+            return;
+        }
+
+        this.messageComponent.addUserMessage(message);
+        this.messageInput.value = '';
+        this.messageInput.style.height = 'auto';
+        this.beginRun('image');
+        this.setProcessing(true);
+
+        // Lock image mode toggle after first message
+        this.imageModeConversationStarted = true;
+        const imageModeToggle = document.getElementById('imageModeToggle');
+        if (imageModeToggle) {
+            imageModeToggle.disabled = true;
+            imageModeToggle.title = 'Cannot change image mode during a conversation';
+        }
+
+        const typingIndicator = this.messageComponent.showTypingIndicator();
+        let textAcc = '';
+        const images = [];
+
+        try {
+            await this.apiClient.streamImageMessage(
+                message,
+                this.conversationId,
+                modelId,
+                (event) => {
+                    if (event.type === 'text_chunk') {
+                        textAcc += event.content;
+                        this.messageComponent.updateMessage(typingIndicator, textAcc, this.isMarkdownEnabled);
+                    } else if (event.type === 'image') {
+                        images.push({ data: event.data, mime_type: event.mime_type || 'image/png' });
+                    } else if (event.type === 'error') {
+                        throw new Error(event.message);
+                    }
+                },
+                this.getStreamOptions()
+            );
+
+            // Replace typing indicator with full image message
+            this.messageComponent.removeTypingIndicator(typingIndicator);
+            this.messageComponent.addImageMessage(textAcc, images);
+
+            await this.sidebar.loadConversations();
+            this.sidebar.setCurrentConversation(this.conversationId);
+
+        } catch (error) {
+            if (this.cancelRequested && this.isAbortError(error)) {
+                if (!textAcc.trim() && images.length === 0) {
+                    this.messageComponent.removeTypingIndicator(typingIndicator);
+                }
+                this.showCancellationMessage();
+            } else {
+                console.error('Error generating image:', error);
+                this.messageComponent.removeTypingIndicator(typingIndicator);
+                this.messageComponent.addErrorMessage(`Error: ${error.message}`);
             }
         } finally {
             this.setProcessing(false);
@@ -1561,6 +1674,9 @@ export class ChatApp {
         setStorage('conversationId', conversationId);
         this.sidebar.setCurrentConversation(conversationId);
 
+        // Reset image mode state before loading (will be re-applied if the conversation is an image one)
+        this._resetImageModeState();
+
         // Clear and load the selected conversation
         this.messageComponent.clearMessages();
         await this.loadConversationHistory();
@@ -1571,6 +1687,26 @@ export class ChatApp {
     /**
      * Create a new conversation
      */
+    /**
+     * Reset image mode toggle to unchecked, enabled state (for new/text conversations).
+     */
+    _resetImageModeState() {
+        this.isImageMode = false;
+        this.imageModeConversationStarted = false;
+        const imageModeToggle = document.getElementById('imageModeToggle');
+        if (imageModeToggle) {
+            imageModeToggle.checked = false;
+            imageModeToggle.disabled = false;
+            imageModeToggle.title = '';
+        }
+        this.modelSelector.setImageMode(false);
+        // Re-show thinking toggle
+        const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
+        if (thinkingContainer) {
+            thinkingContainer.style.display = '';
+        }
+    }
+
     createNewConversation() {
         this.conversationId = generateUUID();
         this.messageComponent.setConversationId(this.conversationId);
@@ -1584,6 +1720,9 @@ export class ChatApp {
         setStorage('conversationId', this.conversationId);
         this.sidebar.setCurrentConversation(this.conversationId);
         this.messageComponent.clearMessages();
+
+        // Re-enable image mode toggle for the new conversation
+        this._resetImageModeState();
 
         console.log('Created new conversation:', this.conversationId);
     }

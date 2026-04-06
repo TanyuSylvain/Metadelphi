@@ -161,6 +161,56 @@ export class MessageComponent {
     }
 
     /**
+     * Add an image generation result message with optional text description and download button(s).
+     * @param {string} text - Text description from the model (may be empty)
+     * @param {Array} images - Array of {data: base64string, mime_type: string}
+     * @returns {HTMLElement} Message element
+     */
+    addImageMessage(text, images) {
+        const messageEl = document.createElement('div');
+        const msgId = 'img-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        messageEl.className = 'message assistant image-response';
+        messageEl.dataset.messageId = msgId;
+
+        // Render text description if present
+        if (text && text.trim()) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'image-response-text';
+            textDiv.innerHTML = this.renderer.render(text);
+            messageEl.appendChild(textDiv);
+        }
+
+        // Render each image with a download button
+        images.forEach((img, i) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'generated-image-wrapper';
+
+            const imgEl = document.createElement('img');
+            imgEl.src = `data:${img.mime_type};base64,${img.data}`;
+            imgEl.className = 'generated-image';
+            imgEl.alt = text ? `Generated image ${i + 1}: ${text.slice(0, 80)}` : `Generated image ${i + 1}`;
+            wrapper.appendChild(imgEl);
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'image-download-btn';
+            downloadBtn.textContent = 'Download';
+            downloadBtn.addEventListener('click', () => {
+                const a = document.createElement('a');
+                a.href = imgEl.src;
+                a.download = `generated-image-${Date.now()}-${i + 1}.png`;
+                a.click();
+            });
+            wrapper.appendChild(downloadBtn);
+
+            messageEl.appendChild(wrapper);
+        });
+
+        this.container.appendChild(messageEl);
+        this.smartScroller.scrollToBottom();
+        return messageEl;
+    }
+
+    /**
      * Create an assistant message shell for coworking transcript rendering.
      * @returns {HTMLElement} Message element
      */
@@ -416,6 +466,21 @@ export class MessageComponent {
      */
     hasThinkingContent(content) {
         return content && content.includes('<think>');
+    }
+
+    /**
+     * Check if content is a JSON-encoded image response (has "images" array key).
+     * @param {string} content - Raw message content string
+     * @returns {boolean}
+     */
+    _isImageResponseJson(content) {
+        if (!content || !content.startsWith('{')) return false;
+        try {
+            const parsed = JSON.parse(content);
+            return Array.isArray(parsed.images);
+        } catch (e) {
+            return false;
+        }
     }
 
     /**
@@ -717,23 +782,33 @@ export class MessageComponent {
             if (msg.role === 'user') {
                 this.addUserMessage(msg.content);
             } else if (msg.role === 'assistant') {
+                // Check if this is an image response stored as JSON
+                if (msg.message_type === 'image_response' || this._isImageResponseJson(msg.content)) {
+                    try {
+                        const parsed = JSON.parse(msg.content);
+                        this.addImageMessage(parsed.text || '', parsed.images || []);
+                    } catch (e) {
+                        this.addAssistantMessage(msg.content);
+                    }
                 // Check if this is a debate message
-                const debateMetadata = this.getDebateMetadata(msg.content);
-                if (debateMetadata) {
-                    this.addDebateMessage(
-                        msg.content,
-                        debateMetadata.debateId,
-                        debateMetadata.iteration,
-                        isMarkdown
-                    );
-                } else if (this.hasThinkingContent(msg.content)) {
-                    // Message contains <think> blocks - render with collapsible thinking
-                    const messageEl = this.addMessage('', 'assistant');
-                    const msgId = Date.now().toString() + Math.random().toString();
-                    messageEl.dataset.messageId = msgId;
-                    this.updateMessageWithThinking(messageEl, msg.content, isMarkdown);
                 } else {
-                    this.addAssistantMessage(msg.content);
+                    const debateMetadata = this.getDebateMetadata(msg.content);
+                    if (debateMetadata) {
+                        this.addDebateMessage(
+                            msg.content,
+                            debateMetadata.debateId,
+                            debateMetadata.iteration,
+                            isMarkdown
+                        );
+                    } else if (this.hasThinkingContent(msg.content)) {
+                        // Message contains <think> blocks - render with collapsible thinking
+                        const messageEl = this.addMessage('', 'assistant');
+                        const msgId = Date.now().toString() + Math.random().toString();
+                        messageEl.dataset.messageId = msgId;
+                        this.updateMessageWithThinking(messageEl, msg.content, isMarkdown);
+                    } else {
+                        this.addAssistantMessage(msg.content);
+                    }
                 }
             } else if (msg.role === 'system') {
                 this.addSystemMessage(msg.content);

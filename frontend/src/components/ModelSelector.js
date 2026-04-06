@@ -9,6 +9,7 @@ export class ModelSelector {
         this.apiClient = apiClient;
         this.models = [];
         this.onChangeCallback = null;
+        this.imageMode = false; // when true, show only image models
     }
 
     /**
@@ -75,19 +76,30 @@ export class ModelSelector {
     }
 
     /**
-     * Group models by provider
+     * Filter and repopulate the dropdown based on current imageMode.
+     * @param {boolean} imageMode - true = show image models only, false = show text models only
+     */
+    setImageMode(imageMode) {
+        this.imageMode = imageMode;
+        this.populateModels();
+    }
+
+    /**
+     * Group models by provider (filtered by current imageMode)
      * @returns {Object} Models grouped by provider name
      */
     groupModelsByProvider() {
         const grouped = {};
 
-        this.models.forEach(model => {
-            const providerName = model.provider_name;
-            if (!grouped[providerName]) {
-                grouped[providerName] = [];
-            }
-            grouped[providerName].push(model);
-        });
+        this.models
+            .filter(model => !!model.is_image_model === this.imageMode)
+            .forEach(model => {
+                const providerName = model.provider_name;
+                if (!grouped[providerName]) {
+                    grouped[providerName] = [];
+                }
+                grouped[providerName].push(model);
+            });
 
         return grouped;
     }

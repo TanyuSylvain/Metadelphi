@@ -106,6 +106,13 @@ class BaseLLMProvider(ABC):
                 return True
         return False
 
+    def is_image_model(self, model_id: str) -> bool:
+        """Check if this model generates images instead of text."""
+        for model in self.get_available_models():
+            if model.get('id') == model_id and model.get('is_image_model', False):
+                return True
+        return False
+
     def get_user_agent(self) -> str:
         """
         Generate a standard user-agent string for API requests.

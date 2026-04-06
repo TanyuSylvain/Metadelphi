@@ -2430,3 +2430,62 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ===== Image Generation ===== */
+.image-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.model-selector-container {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.message.image-response {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 600px;
+}
+
+.image-response-text {
+    font-size: 0.9rem;
+    color: var(--text-secondary, #555);
+}
+
+.generated-image-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+}
+
+.generated-image {
+    max-width: 100%;
+    max-height: 600px;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    display: block;
+    object-fit: contain;
+}
+
+.image-download-btn {
+    padding: 0.3rem 0.9rem;
+    background: #4a90e2;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.image-download-btn:hover {
+    background: #357abd;
+}

@@ -11,6 +11,7 @@ from .minimax import MiniMaxProvider
 from .deepseek import DeepSeekProvider
 from .openai import OpenAIProvider
 from .gemini import GeminiProvider
+from .gemini_image import GeminiImageProvider
 
 
 class ProviderRegistry:
@@ -25,6 +26,7 @@ class ProviderRegistry:
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
+        "gemini_image": GeminiImageProvider,
     }
 
     @classmethod

@@ -85,7 +85,8 @@ class Settings(BaseSettings):
             "minimax": self.minimax_api_key,
             "deepseek": self.deepseek_api_key,
             "openai": self.openai_api_key,
-            "gemini": self.gemini_api_key
+            "gemini": self.gemini_api_key,
+            "gemini_image": self.gemini_api_key,
         }
         return key_map.get(provider)
 
@@ -97,7 +98,8 @@ class Settings(BaseSettings):
             "minimax": self.minimax_base_url,
             "deepseek": self.deepseek_base_url,
             "openai": self.openai_base_url,
-            "gemini": self.gemini_base_url
+            "gemini": self.gemini_base_url,
+            "gemini_image": self.gemini_base_url,
         }
         return url_map.get(provider)
 

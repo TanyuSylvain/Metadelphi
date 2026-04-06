@@ -132,6 +132,66 @@ export class APIClient {
     }
 
     /**
+     * Send a prompt to an image generation model and stream the SSE response.
+     * @param {string} message - User prompt
+     * @param {string} conversationId - Conversation ID
+     * @param {string} modelId - Image model ID
+     * @param {Function} onEvent - Callback for each parsed SSE event object
+     * @param {Object} options - { signal, onRunStart }
+     */
+    async streamImageMessage(message, conversationId, modelId, onEvent, options = {}) {
+        try {
+            const response = await fetch(`${this.baseURL}/chat/image/stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message,
+                    conversation_id: conversationId,
+                    model: modelId,
+                }),
+                signal: options.signal,
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Image request failed');
+            }
+
+            const runId = response.headers.get('X-Run-ID');
+            if (options.onRunStart) {
+                options.onRunStart(runId);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep incomplete line
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const event = JSON.parse(line.slice(6));
+                            onEvent(event);
+                        } catch (e) {
+                            // ignore malformed lines
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error streaming image message:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get conversation info (metadata only)
      * @param {string} conversationId - Conversation ID
      * @returns {Promise<Object|null>} Conversation info or null if not found
