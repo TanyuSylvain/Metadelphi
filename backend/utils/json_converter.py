@@ -2,7 +2,7 @@
 JSON extraction and conversion utilities for LLM responses.
 
 Handles JSON parsing from LLM responses, with fallback to using a lightweight
-model (qwen-flash) for conversion when the source LLM has thinking mode enabled
+model (qwen3.5-flash) for conversion when the source LLM has thinking mode enabled
 (which is incompatible with JSON mode).
 
 Usage:
@@ -25,7 +25,7 @@ class JsonConverter:
     JSON extraction and conversion for LLM responses (Singleton).
 
     Provides methods to extract JSON from text responses, with optional fallback
-    to using a lightweight LLM (qwen-flash) for conversion when direct parsing fails.
+    to using a lightweight LLM (qwen3.5-flash) for conversion when direct parsing fails.
     This is particularly useful when the source LLM has thinking mode enabled,
     which is incompatible with JSON mode.
     """
@@ -40,20 +40,20 @@ class JsonConverter:
         return cls._instance
 
     def _get_converter_llm(self):
-        """Get or create a cached JSON converter LLM (qwen-flash with JSON mode)."""
+        """Get or create a cached JSON converter LLM (qwen3.5-flash with JSON mode)."""
         if self._converter_llm is None:
             self._converter_llm = ProviderFactory.create_llm(
-                model_id="qwen-flash",
+                model_id="qwen3.5-flash",
                 provider_name="qwen",
                 temperature=0,
                 json_mode=True
             )
-            logger.info("Created JSON converter LLM: qwen-flash")
+            logger.info("Created JSON converter LLM: qwen3.5-flash")
         return self._converter_llm
 
     def _convert_with_llm(self, text: str) -> dict:
         """
-        Convert text response to JSON using qwen-flash model.
+        Convert text response to JSON using qwen3.5-flash model.
 
         Args:
             text: Raw text response from LLM
@@ -98,7 +98,7 @@ Return ONLY the JSON object, no explanations."""
 
         Args:
             text: Raw text response from LLM
-            use_converter: If True, use qwen-flash to convert text to JSON when
+            use_converter: If True, use qwen3.5-flash to convert text to JSON when
                           direct parsing fails. Use this when the source LLM has
                           thinking mode enabled (which is incompatible with JSON mode).
 
@@ -119,7 +119,7 @@ Return ONLY the JSON object, no explanations."""
                 logger.warning(f"Failed to parse JSON: {e}")
                 return {"error": "Failed to parse response", "raw": text}
 
-            # Use qwen-flash JSON converter as fallback
+            # Use qwen3.5-flash JSON converter as fallback
             logger.info("Using JSON converter for thinking mode response")
             return self._convert_with_llm(text)
 
