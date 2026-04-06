@@ -54,13 +54,14 @@ The application will be available at: **http://localhost:8080/index.html**
 
 ## ✨ Features
 
-### 🎯 Two Operating Modes
+### 🎯 Three Operating Modes
 
 #### **Simple Chat Mode**
 - Direct conversation with individual AI models
 - Real-time streaming responses
 - Fast and straightforward interaction
 - Perfect for quick questions and comparisons
+- Optional **web search** powered by configurable MCP servers
 
 #### **Multi-Agent Debate Mode**
 LangGraph-powered workflow with 3 specialized AI agents:
@@ -69,6 +70,17 @@ LangGraph-powered workflow with 3 specialized AI agents:
 - **🔍 Critic**: Reviews answers critically, identifies weaknesses, and provides constructive feedback
 - **Configurable**: Adjust iteration count and quality score thresholds
 - **Real-time Visualization**: Watch the debate unfold with live progress tracking
+
+#### **Coworking Mode** *(New)*
+An autonomous coding agent that works directly in your local workspace:
+- **🗂️ File Operations**: Read, write, and list files within a sandboxed workspace directory
+- **💻 Code Execution**: Run Python scripts and shell commands inside the workspace
+- **📦 Package Management**: Automatically check and install Python packages as needed
+- **🌐 Web Search**: Integrated web search via MCP servers for research during tasks
+- **📁 Interactive Workspace Selection**: Native OS folder picker to choose your working directory
+- **📊 Workflow Visualization**: Real-time display of tool calls, plan steps, and generated/deleted files
+- **🔗 Parallel Tool Execution**: Multiple tools run concurrently for faster task completion
+- **📋 File Tracking**: Session-level tracking of all files created or removed by the agent
 
 ### 🤖 Supported LLM Providers
 
@@ -87,9 +99,13 @@ UnifyLLM supports **7 major AI providers** with multiple models:
 ### 🎨 Core Features
 
 - **🔄 Real-time Streaming**: See responses as they're generated
-- **💭 Thinking Control**: Possible to enble or disable thinking
+- **💭 Thinking Control**: Enable or disable chain-of-thought reasoning; collapsible `<think>` sections keep the UI clean
+- **⛔ Cancel**: Stop any in-progress streaming request at any time
+- **🌐 Web Search**: MCP-powered web search with source citations, available in Simple and Coworking modes
+- **🔌 MCP Server Support**: Configure external MCP servers for tools like web search and web parsing
 - **💾 Conversation History**: Persistent storage with SQLite
 - **🎨 Markdown Rendering**: Beautiful formatting for code, tables, and text
+- **✨ Syntax Highlighting**: Language-aware code block highlighting in chat
 - **📋 Clean Copy**: One-click copy of purified content (removes redundant spaces, blank lines, and normalizes Chinese-English formatting)
 - **📱 Responsive UI**: Works on desktop, tablet, and mobile
 - **🔌 REST API**: Full programmatic access with OpenAPI docs
@@ -232,6 +248,9 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 # Google Gemini
 GEMINI_API_KEY=your_key_here
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com
+
+# MCP Servers for web search and web parsing (optional, JSON array)
+# MCP_SERVERS='[{"name":"websearch","url":"<server-url>","transport":"sse","api_key":"<optional-key>"}]'
 ```
 
 ### 5. Launch the Application
@@ -268,6 +287,32 @@ The application will open automatically in your browser at:
 4. Ask your question
 5. Watch the agents debate and arrive at a consensus!
 
+### Using Coworking Mode
+
+1. Choose **"Coworking"** mode
+2. Click **Browse** to select a local workspace directory
+3. Ask the agent to complete a coding task (write a script, refactor code, run tests, etc.)
+4. Watch the agent's plan, tool calls, and file changes in the workflow panel
+5. Click **Cancel** at any time to stop the agent mid-task
+
+The agent has access to:
+- Read/write files within the workspace
+- Execute Python scripts and shell commands
+- Install Python packages
+- Search the web (if MCP servers are configured)
+
+### Enabling Web Search
+
+Web search is powered by MCP servers. To enable it, set `MCP_SERVERS` in your `.env` file:
+
+```bash
+# JSON array of MCP server configurations
+MCP_SERVERS='[{"name":"websearch","url":"<your-mcp-server-url>","transport":"sse"}]'
+```
+
+Once configured, a **Search** toggle appears in Simple and Coworking modes.
+
+
 ### Managing Conversations
 
 - **New Conversation**: Click the "+" button in the sidebar
@@ -289,15 +334,25 @@ backend/
 │   ├── routes/
 │   │   ├── chat.py                  # Simple streaming chat endpoint
 │   │   ├── multi_agent_chat.py      # Multi-agent debate endpoint
+│   │   ├── coworking_chat.py        # Coworking agent endpoint (NEW)
+│   │   ├── run_control.py           # Cancel active streaming runs (NEW)
 │   │   ├── conversations.py         # Conversation CRUD operations
 │   │   ├── models.py                # List available models
 │   │   └── health.py                # Health check endpoint
+│   ├── run_control.py               # RunManager for cancellation state (NEW)
 │   └── schemas.py                   # Pydantic data models
 ├── core/
 │   ├── multi_agent.py               # LangGraph workflow orchestration
 │   ├── multi_agent_state.py         # State management for debates
+│   ├── coworking_agent.py           # LangGraph tool-calling coworking agent (NEW)
+│   ├── coworking_state.py           # Coworking session state (NEW)
+│   ├── coworking_prompts.py         # System prompts for coworking agent (NEW)
+│   ├── run_manager.py               # Cancellable run lifecycle management (NEW)
 │   ├── conversation_mode_manager.py # Mode switching logic
-│   └── prompts.py                   # System prompts for agents
+│   └── prompts.py                   # System prompts for debate agents
+├── tools/
+│   ├── workspace_tools.py           # Sandboxed file/shell tools for coworking (NEW)
+│   └── web_search.py                # MCP-backed web search tools (NEW)
 ├── providers/
 │   ├── factory.py                   # LLM provider factory
 │   ├── base.py                      # Base provider interface
@@ -325,15 +380,18 @@ frontend/src/
 ├── components/
 │   ├── ModelSelector.js             # Model selection dropdown
 │   ├── Sidebar.js                   # Conversation history sidebar
-│   ├── MessageComponent.js          # Chat message rendering
-│   ├── ModeSelector.js              # Simple/Debate mode toggle
+│   ├── MessageComponent.js          # Chat message rendering (syntax highlighting)
+│   ├── ModeSelector.js              # Simple/Debate/Coworking mode toggle
 │   ├── MultiAgentConfig.js          # Debate configuration panel
 │   ├── DebateViewer.js              # Real-time debate visualization
-│   └── ModeratorAnalysisViewer.js   # Moderator insights display
+│   ├── ModeratorAnalysisViewer.js   # Moderator insights display
+│   ├── CoworkingConfig.js           # Workspace path selector (NEW)
+│   └── ToolExecutionViewer.js       # Coworking tool calls & file tracker (NEW)
 ├── utils/
 │   ├── api.js                       # API client wrapper
 │   ├── helpers.js                   # Helper functions
-│   └── markdown.js                  # Markdown rendering
+│   ├── markdown.js                  # Markdown rendering
+│   └── smartScroller.js             # Smart auto-scroll utility (NEW)
 └── styles/                          # CSS stylesheets
 ```
 
@@ -380,6 +438,18 @@ Full interactive API documentation is available at:
     "score_threshold": 80
   }
   ```
+
+- `POST /chat/coworking/stream` - Coworking agent with tool calling
+  ```json
+  {
+    "message": "Write a Python script that...",
+    "model_id": "qwen-max",
+    "workspace_path": "/path/to/your/workspace",
+    "conversation_id": "optional-uuid"
+  }
+  ```
+
+- `POST /chat/runs/{run_id}/cancel` - Cancel an active streaming run
 
 #### Model Management
 - `GET /models/` - List all available models
