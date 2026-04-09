@@ -14,16 +14,18 @@ class OpenAIProvider(BaseLLMProvider):
         """Return available OpenAI models."""
         return [
             {
-                "id": "gpt-5.2",
-                "name": "GPT-5.2",
+                "id": "gpt-5.4",
+                "name": "GPT-5.4",
                 "description": "Most capable GPT-5 model",
-                "support_thinking": False
+                "supports_thinking": True,
+                "thinking_locked": False
             },
             {
-                "id": "gpt-5.2-chat",
-                "name": "GPT-5.2 Chat",
-                "description": "Most capable GPT-5 chat/instruct model",
-                "support_thinking": False
+                "id": "gpt-5.4-mini",
+                "name": "GPT-5.4 Mini",
+                "description": "More efficient GPT-5 model for high-throughput workloads",
+                "supports_thinking": True,
+                "thinking_locked": False
             },
         ]
 
@@ -54,14 +56,12 @@ class OpenAIProvider(BaseLLMProvider):
 
         base_url = kwargs.get("base_url", "https://api.openai.com/v1")
 
-        # thinking parameter ignored - not supported
-        _ = thinking
-
         return ChatOpenAI(
             model=validated_model,
             api_key=validated_key,
             base_url=base_url,
             temperature=temperature,
             streaming=True,
-            default_headers={"User-Agent": self.get_user_agent()}
+            default_headers={"User-Agent": self.get_user_agent()},
+            extra_body={"reasoning": {"enabled": thinking}}
         )
