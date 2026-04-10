@@ -17,7 +17,8 @@ A powerful, cross-platform application for comparing and interacting with multip
 4. Double-click `install.bat`
 5. Follow the on-screen instructions
 6. Configure your API keys in the GUI wizard
-7. Launch using the desktop shortcut or run `launcher.bat`
+7. Optionally enable auto-start at login during install, or later with `setup_service.bat`
+8. Launch using the desktop shortcut or run `launcher.bat`
 
 ### macOS
 1. Download the installer package (TAR.GZ file)
@@ -26,7 +27,8 @@ A powerful, cross-platform application for comparing and interacting with multip
 4. Run: `./install.sh`
 5. Follow the on-screen instructions
 6. Configure your API keys in the GUI wizard
-7. Launch from **Launchpad** or **~/Applications/UnifyLLM.app**
+7. Optionally enable auto-start at login during install, or later with `./setup_service.sh`
+8. Launch from **Launchpad** or **~/Applications/UnifyLLM.app**
 
 ### Linux
 1. Download the installer package (TAR.GZ file)
@@ -35,7 +37,8 @@ A powerful, cross-platform application for comparing and interacting with multip
 4. Run: `./install.sh`
 5. Follow the on-screen instructions
 6. Configure your API keys in the GUI wizard
-7. Launch from your **Application Menu** or Desktop launcher
+7. Optionally enable auto-start at login during install, or later with `./setup_service.sh`
+8. Launch from your **Application Menu** or Desktop launcher
 
 **That's it!** The installer automatically:
 - ✅ Checks for Python 3.10+ (guides you to install if missing)
@@ -46,9 +49,18 @@ A powerful, cross-platform application for comparing and interacting with multip
   - **macOS**: UnifyLLM.app in ~/Applications (appears in Launchpad)
   - **Linux**: Desktop entry in Application Menu
   - **Windows**: Desktop shortcut
+- ✅ Optionally registers a per-user auto-start service at login
 - ✅ Opens the application in your browser automatically
 
 The application will be available at: **http://localhost:8080/index.html**
+
+If you skip auto-start during installation, you can enable it later with:
+- **Windows**: `setup_service.bat`
+- **macOS/Linux**: `./setup_service.sh`
+
+To remove auto-start later:
+- **Windows**: `remove_service.bat`
+- **macOS/Linux**: `./remove_service.sh`
 
 ---
 
@@ -606,4 +618,3 @@ python -m http.server 8080
 This project is licensed under the MIT License - see [LICENSE.txt](LICENSE.txt) for details.
 
 ---
-

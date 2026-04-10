@@ -151,6 +151,19 @@ if errorlevel 1 (
 )
 
 echo.
+set /p ENABLE_SERVICE="Enable UnifyLLM auto-start at login? (y/n) "
+if /i "%ENABLE_SERVICE%"=="y" (
+    echo Setting up UnifyLLM auto-start service...
+    call setup_service.bat
+    if errorlevel 1 (
+        echo Warning: Failed to enable auto-start. You can try again later with: setup_service.bat
+    )
+) else (
+    echo Auto-start not enabled.
+    echo You can enable it later by running: setup_service.bat
+)
+
+echo.
 echo ======================================
 echo   Installation Complete!
 echo ======================================
@@ -161,6 +174,8 @@ echo   - Run: launcher.bat
 echo.
 echo The application will open in your default browser at:
 echo   http://localhost:8080/index.html
+echo To enable auto-start later, run:
+echo   setup_service.bat
 echo.
 
 REM Ask if user wants to launch now

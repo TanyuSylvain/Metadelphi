@@ -160,6 +160,17 @@ else
 fi
 
 echo ""
+read -p "Enable UnifyLLM auto-start at login? (y/n) " -n 1 -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Setting up UnifyLLM auto-start service..."
+    ./setup_service.sh || echo "Warning: Failed to enable auto-start. You can try again later with: ./setup_service.sh"
+else
+    echo "Auto-start not enabled."
+    echo "You can enable it later by running: ./setup_service.sh"
+fi
+
+echo ""
 echo "======================================"
 echo "  Installation Complete!"
 echo "======================================"
@@ -174,6 +185,8 @@ echo "  - Run: ./launcher.sh"
 echo ""
 echo "The application will open in your default browser at:"
 echo "  http://localhost:8080/index.html"
+echo "To enable auto-start later, run:"
+echo "  ./setup_service.sh"
 echo ""
 
 # Ask if user wants to launch now

@@ -37,6 +37,13 @@ if not exist ".env" (
     %PYTHON_CMD% installer\config_wizard.py
 )
 
+%PYTHON_CMD% service_runner.py status --quiet >nul 2>&1
+if not errorlevel 1 (
+    echo UnifyLLM is already running in the background.
+    start http://localhost:8080/index.html
+    exit /b 0
+)
+
 echo Starting UnifyLLM...
 echo ===================
 

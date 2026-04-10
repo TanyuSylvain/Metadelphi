@@ -37,6 +37,20 @@ if [ ! -f ".env" ]; then
     $PYTHON_CMD installer/config_wizard.py
 fi
 
+open_browser() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        open http://localhost:8080/index.html
+    else
+        xdg-open http://localhost:8080/index.html 2>/dev/null || echo "Please open http://localhost:8080/index.html in your browser"
+    fi
+}
+
+if $PYTHON_CMD service_runner.py status --quiet >/dev/null 2>&1; then
+    echo "UnifyLLM is already running in the background."
+    open_browser
+    exit 0
+fi
+
 # Cleanup function
 cleanup() {
     echo "Stopping servers..."
@@ -73,11 +87,7 @@ echo "Frontend:    http://localhost:8080/index.html"
 echo ""
 
 # Open browser
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    open http://localhost:8080/index.html
-else
-    xdg-open http://localhost:8080/index.html 2>/dev/null || echo "Please open http://localhost:8080/index.html in your browser"
-fi
+open_browser
 
 echo "Press Ctrl+C to stop the application"
 
