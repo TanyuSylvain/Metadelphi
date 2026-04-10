@@ -9,6 +9,15 @@ PYTHON_BIN="$APP_DIR/.venv/bin/python"
 SERVICE_SCRIPT="$APP_DIR/service_runner.py"
 SERVICE_NAME="unifyllm"
 
+xml_escape() {
+    printf '%s' "$1" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/"/\&quot;/g' \
+        -e "s/'/\&apos;/g"
+}
+
 if [ ! -x "$PYTHON_BIN" ]; then
     echo "Error: Virtual environment not found at $PYTHON_BIN"
     echo "Please run ./install.sh first."
@@ -66,6 +75,10 @@ if [[ "$OSTYPE" == darwin* ]]; then
     PLIST_FILE="$PLIST_DIR/com.unifyllm.service.plist"
     LOG_DIR="$HOME/Library/Logs/UnifyLLM"
     USER_ID="$(id -u)"
+    APP_DIR_ESCAPED="$(xml_escape "$APP_DIR")"
+    PYTHON_BIN_ESCAPED="$(xml_escape "$PYTHON_BIN")"
+    SERVICE_SCRIPT_ESCAPED="$(xml_escape "$SERVICE_SCRIPT")"
+    LOG_DIR_ESCAPED="$(xml_escape "$LOG_DIR")"
 
     mkdir -p "$PLIST_DIR"
     mkdir -p "$LOG_DIR"
@@ -79,23 +92,28 @@ if [[ "$OSTYPE" == darwin* ]]; then
     <string>com.unifyllm.service</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$PYTHON_BIN</string>
-        <string>$SERVICE_SCRIPT</string>
+        <string>$PYTHON_BIN_ESCAPED</string>
+        <string>$SERVICE_SCRIPT_ESCAPED</string>
         <string>run</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$APP_DIR</string>
+    <string>$APP_DIR_ESCAPED</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>StandardOutPath</key>
-    <string>$LOG_DIR/launchagent.log</string>
+    <string>$LOG_DIR_ESCAPED/launchagent.log</string>
     <key>StandardErrorPath</key>
-    <string>$LOG_DIR/launchagent-error.log</string>
+    <string>$LOG_DIR_ESCAPED/launchagent-error.log</string>
 </dict>
 </plist>
 EOF
+
+    plutil -lint "$PLIST_FILE" >/dev/null
 
     launchctl bootout "gui/$USER_ID" "$PLIST_FILE" >/dev/null 2>&1 || true
     launchctl bootstrap "gui/$USER_ID" "$PLIST_FILE"

@@ -127,6 +127,17 @@ def service_running() -> bool:
     return is_port_open(BACKEND_PORT) and is_port_open(FRONTEND_PORT)
 
 
+def managed_supervisor_running() -> bool:
+    pid = read_pid()
+    if pid and process_exists(pid):
+        return True
+
+    if pid and not process_exists(pid):
+        cleanup_pid_files()
+
+    return False
+
+
 def stop_service() -> int:
     pid = read_pid()
     if pid and process_exists(pid):
@@ -206,8 +217,18 @@ def terminate_process(proc: subprocess.Popen[bytes], name: str) -> None:
 def run_supervisor() -> int:
     ensure_runtime_dirs()
 
-    if service_running():
+    if managed_supervisor_running():
         log("UnifyLLM service is already running; skipping duplicate start.")
+        return 0
+
+    backend_ready = is_port_open(BACKEND_PORT)
+    frontend_ready = is_port_open(FRONTEND_PORT)
+    if backend_ready or frontend_ready:
+        if backend_ready and frontend_ready:
+            log("Ports 8000 and 8080 are already in use; not starting a duplicate service.")
+            return 0
+
+        log("Port conflict detected while starting UnifyLLM; one required port is already in use.")
         return 0
 
     write_pid_file()
