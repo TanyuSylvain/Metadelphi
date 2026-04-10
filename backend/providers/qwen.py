@@ -14,8 +14,8 @@ class QwenProvider(BaseLLMProvider):
         """Return available Qwen models."""
         return [
             {
-                "id": "qwen3.5-plus",
-                "name": "Qwen 3.5 plus",
+                "id": "qwen3.6-plus",
+                "name": "Qwen 3.6 plus",
                 "description": "Lastest Qwen model",
                 "supports_thinking": True,
                 "thinking_locked": False,
