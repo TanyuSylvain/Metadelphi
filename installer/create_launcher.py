@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create Desktop Launcher for UnifyLLM on Unix systems
+Create Desktop Launcher for Metadelphi on Unix systems
 This script creates desktop launchers for Linux and MacOS
 """
 
@@ -23,7 +23,7 @@ def create_linux_launcher():
         desktop_entry = f"""[Desktop Entry]
 Type=Application
 Version=1.0
-Name=UnifyLLM
+Name=Metadelphi
 Comment=Multi-Agent Debate System for LLM Comparison
 Exec={launcher_script}
 Icon={icon_path if icon_path.exists() else ''}
@@ -39,13 +39,19 @@ Keywords=AI;LLM;Chat;Agent;
         # 1. User's desktop
         desktop = Path.home() / "Desktop"
         if desktop.exists():
-            desktop_file = desktop / "UnifyLLM.desktop"
+            legacy_desktop_file = desktop / "UnifyLLM.desktop"
+            if legacy_desktop_file.exists():
+                legacy_desktop_file.unlink()
+            desktop_file = desktop / "Metadelphi.desktop"
             desktop_locations.append(desktop_file)
 
         # 2. Local applications directory
         local_apps = Path.home() / ".local" / "share" / "applications"
         local_apps.mkdir(parents=True, exist_ok=True)
-        desktop_file_apps = local_apps / "UnifyLLM.desktop"
+        legacy_apps_file = local_apps / "UnifyLLM.desktop"
+        if legacy_apps_file.exists():
+            legacy_apps_file.unlink()
+        desktop_file_apps = local_apps / "Metadelphi.desktop"
         desktop_locations.append(desktop_file_apps)
 
         # Write desktop files
@@ -89,7 +95,8 @@ def create_macos_launcher():
         icon_png = Path(__file__).parent / "icon.png"
 
         # Create .app bundle in /Applications
-        app_bundle = Path.home() / "Applications" / "UnifyLLM.app"
+        app_bundle = Path.home() / "Applications" / "Metadelphi.app"
+        legacy_app_bundle = Path.home() / "Applications" / "UnifyLLM.app"
 
         # Create directory structure
         contents_dir = app_bundle / "Contents"
@@ -99,6 +106,8 @@ def create_macos_launcher():
         # Remove existing app bundle if it exists
         if app_bundle.exists():
             shutil.rmtree(app_bundle)
+        if legacy_app_bundle.exists():
+            shutil.rmtree(legacy_app_bundle)
 
         # Create directories
         macos_dir.mkdir(parents=True, exist_ok=True)
@@ -110,11 +119,11 @@ def create_macos_launcher():
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>UnifyLLM</string>
+    <string>Metadelphi</string>
     <key>CFBundleDisplayName</key>
-    <string>UnifyLLM</string>
+    <string>Metadelphi</string>
     <key>CFBundleIdentifier</key>
-    <string>com.unify.llm</string>
+    <string>com.metadelphi.app</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundlePackageType</key>
@@ -122,9 +131,9 @@ def create_macos_launcher():
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleExecutable</key>
-    <string>UnifyLLM</string>
+    <string>Metadelphi</string>
     <key>CFBundleIconFile</key>
-    <string>UnifyLLM.icns</string>
+    <string>Metadelphi.icns</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.13</string>
     <key>NSHighResolutionCapable</key>
@@ -146,7 +155,7 @@ osascript -e 'tell application "Terminal"
 end tell'
 """
 
-        launcher_path = macos_dir / "UnifyLLM"
+        launcher_path = macos_dir / "Metadelphi"
         with open(launcher_path, 'w') as f:
             f.write(launcher_content)
         os.chmod(launcher_path, 0o755)
@@ -156,7 +165,7 @@ end tell'
             try:
                 # Try using sips (built-in macOS tool)
                 import subprocess
-                iconset_dir = resources_dir / "UnifyLLM.iconset"
+                iconset_dir = resources_dir / "Metadelphi.iconset"
                 iconset_dir.mkdir(exist_ok=True)
 
                 # Generate different icon sizes
@@ -180,7 +189,7 @@ end tell'
                 subprocess.run([
                     'iconutil', '-c', 'icns',
                     str(iconset_dir),
-                    '-o', str(resources_dir / "UnifyLLM.icns")
+                    '-o', str(resources_dir / "Metadelphi.icns")
                 ], capture_output=True, timeout=10)
 
                 # Clean up iconset
@@ -190,7 +199,7 @@ end tell'
                 print(f"Warning: Could not convert icon to .icns format: {e}")
                 # Copy PNG as fallback
                 try:
-                    shutil.copy(icon_png, resources_dir / "UnifyLLM.png")
+                    shutil.copy(icon_png, resources_dir / "Metadelphi.png")
                 except:
                     pass
 
@@ -226,7 +235,7 @@ def main():
 
     else:
         print(f"Unsupported system: {system}")
-        print("You can still launch UnifyLLM by running: ./launcher.sh")
+        print("You can still launch Metadelphi by running: ./launcher.sh")
         return 1
 
 

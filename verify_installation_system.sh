@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# UnifyLLM Installation System Verification Script
+# Metadelphi Installation System Verification Script
 # This script verifies that all installation components are properly set up
 
 echo "======================================"
-echo "  UnifyLLM Installation Verification"
+echo "  Metadelphi Installation Verification"
 echo "======================================"
 echo ""
 

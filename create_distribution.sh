@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# UnifyLLM Distribution Package Creator
+# Metadelphi Distribution Package Creator
 # This script creates distribution packages for Windows and Unix systems
 
 set -e
@@ -9,7 +9,7 @@ VERSION=${1:-"1.0.0"}
 DIST_DIR="dist"
 
 echo "======================================"
-echo "  UnifyLLM Distribution Creator"
+echo "  Metadelphi Distribution Creator"
 echo "======================================"
 echo ""
 echo "Creating distribution packages for version v${VERSION}..."
@@ -50,7 +50,7 @@ echo "Step 1: Creating Unix distribution package..."
 echo "---------------------------------------"
 
 # Create tarball for Unix (MacOS/Linux)
-UNIX_PACKAGE="$DIST_DIR/UnifyLLM-Installer-v${VERSION}.tar.gz"
+UNIX_PACKAGE="$DIST_DIR/Metadelphi-Installer-v${VERSION}.tar.gz"
 
 tar -czf "$UNIX_PACKAGE" \
     $TAR_EXCLUDES \
@@ -59,10 +59,10 @@ tar -czf "$UNIX_PACKAGE" \
 
 # Rename to remove parent directory structure
 cd "$DIST_DIR"
-tar -xzf "UnifyLLM-Installer-v${VERSION}.tar.gz"
-mv "$(basename "$SCRIPT_DIR")" "UnifyLLM-Installer-v${VERSION}"
-tar -czf "UnifyLLM-Installer-v${VERSION}.tar.gz" "UnifyLLM-Installer-v${VERSION}"
-rm -rf "UnifyLLM-Installer-v${VERSION}"
+tar -xzf "Metadelphi-Installer-v${VERSION}.tar.gz"
+mv "$(basename "$SCRIPT_DIR")" "Metadelphi-Installer-v${VERSION}"
+tar -czf "Metadelphi-Installer-v${VERSION}.tar.gz" "Metadelphi-Installer-v${VERSION}"
+rm -rf "Metadelphi-Installer-v${VERSION}"
 cd ..
 
 echo "✓ Created: $UNIX_PACKAGE"
@@ -72,7 +72,7 @@ echo "Step 2: Creating Windows distribution package..."
 echo "---------------------------------------"
 
 # Create temporary directory for Windows package
-WIN_TEMP="$DIST_DIR/UnifyLLM-Installer-v${VERSION}-Windows"
+WIN_TEMP="$DIST_DIR/Metadelphi-Installer-v${VERSION}-Windows"
 mkdir -p "$WIN_TEMP"
 
 # Copy files excluding patterns
@@ -96,18 +96,18 @@ rsync -a \
 
 # Create zip for Windows
 cd "$DIST_DIR"
-WIN_PACKAGE="UnifyLLM-Installer-v${VERSION}-Windows.zip"
-zip -r "$WIN_PACKAGE" "UnifyLLM-Installer-v${VERSION}-Windows" > /dev/null
+WIN_PACKAGE="Metadelphi-Installer-v${VERSION}-Windows.zip"
+zip -r "$WIN_PACKAGE" "Metadelphi-Installer-v${VERSION}-Windows" > /dev/null
 
 # Clean up temp directory
-rm -rf "UnifyLLM-Installer-v${VERSION}-Windows"
+rm -rf "Metadelphi-Installer-v${VERSION}-Windows"
 cd ..
 
 echo "✓ Created: $DIST_DIR/$WIN_PACKAGE"
 echo ""
 
 # Calculate sizes
-UNIX_SIZE=$(du -h "$DIST_DIR/UnifyLLM-Installer-v${VERSION}.tar.gz" | cut -f1)
+UNIX_SIZE=$(du -h "$DIST_DIR/Metadelphi-Installer-v${VERSION}.tar.gz" | cut -f1)
 WIN_SIZE=$(du -h "$DIST_DIR/$WIN_PACKAGE" | cut -f1)
 
 echo "======================================"

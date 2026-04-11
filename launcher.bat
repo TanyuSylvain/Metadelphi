@@ -1,5 +1,5 @@
 @echo off
-REM UnifyLLM Launcher Script
+REM Metadelphi Launcher Script
 REM This script starts both the backend and frontend servers
 
 cd /d "%~dp0"
@@ -39,12 +39,12 @@ if not exist ".env" (
 
 %PYTHON_CMD% service_runner.py status --quiet >nul 2>&1
 if not errorlevel 1 (
-    echo UnifyLLM is already running in the background.
+    echo Metadelphi is already running in the background.
     start http://localhost:8080/index.html
     exit /b 0
 )
 
-echo Starting UnifyLLM...
+echo Starting Metadelphi...
 echo ===================
 
 REM Start backend server
@@ -58,7 +58,7 @@ start /B %PYTHON_CMD% -m http.server 8080 --directory frontend\src
 timeout /t 1 /nobreak >nul
 
 echo.
-echo UnifyLLM is running!
+echo Metadelphi is running!
 echo ===================
 echo Backend API: http://localhost:8000
 echo Frontend:    http://localhost:8080/index.html

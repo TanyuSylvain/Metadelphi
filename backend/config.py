@@ -1,5 +1,5 @@
 """
-Centralized configuration management for the LLM GUI application.
+Centralized configuration management for the Metadelphi application.
 """
 
 import os

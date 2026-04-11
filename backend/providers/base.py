@@ -116,4 +116,4 @@ class BaseLLMProvider(ABC):
         system = platform.system()
         release = platform.release()
         python_version = platform.python_version()
-        return f"UnifyLLM/1.0 ({system} {release}; Python/{python_version})"
+        return f"Metadelphi/1.0 ({system} {release}; Python/{python_version})"

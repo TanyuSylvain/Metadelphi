@@ -14,7 +14,8 @@ if not exist "service_runner.py" (
     exit /b 1
 )
 
-set "TASK_NAME=UnifyLLM"
+set "TASK_NAME=Metadelphi"
+set "LEGACY_TASK_NAME=UnifyLLM"
 set "PYTHON_EXE=%CD%\.venv\Scripts\python.exe"
 set "PYTHONW_EXE=%CD%\.venv\Scripts\pythonw.exe"
 if not exist "%PYTHONW_EXE%" (
@@ -23,6 +24,12 @@ if not exist "%PYTHONW_EXE%" (
 
 set "SERVICE_SCRIPT=%CD%\service_runner.py"
 
+schtasks /query /tn "%LEGACY_TASK_NAME%" >nul 2>&1
+if not errorlevel 1 (
+    schtasks /end /tn "%LEGACY_TASK_NAME%" >nul 2>&1
+    schtasks /delete /tn "%LEGACY_TASK_NAME%" /f >nul 2>&1
+)
+
 schtasks /query /tn "%TASK_NAME%" >nul 2>&1
 if not errorlevel 1 (
     schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
@@ -30,12 +37,12 @@ if not errorlevel 1 (
 
 schtasks /create /tn "%TASK_NAME%" /sc onlogon /rl limited /tr "\"%PYTHONW_EXE%\" \"%SERVICE_SCRIPT%\" run" /f
 if errorlevel 1 (
-    echo Error: Failed to create the UnifyLLM auto-start task.
+    echo Error: Failed to create the Metadelphi auto-start task.
     exit /b 1
 )
 
 schtasks /run /tn "%TASK_NAME%" >nul 2>&1
 
-echo UnifyLLM auto-start has been enabled.
+echo Metadelphi auto-start has been enabled.
 echo Disable later with: remove_service.bat
 exit /b 0

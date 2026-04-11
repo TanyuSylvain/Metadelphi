@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create Windows Desktop Shortcut for UnifyLLM
+Create Windows Desktop Shortcut for Metadelphi
 This script creates a desktop shortcut on Windows systems
 """
 
@@ -23,13 +23,16 @@ def create_windows_shortcut():
 
             # Get desktop path
             desktop = shell.SpecialFolders("Desktop")
-            shortcut_path = os.path.join(desktop, "UnifyLLM.lnk")
+            legacy_shortcut_path = os.path.join(desktop, "UnifyLLM.lnk")
+            if os.path.exists(legacy_shortcut_path):
+                os.unlink(legacy_shortcut_path)
+            shortcut_path = os.path.join(desktop, "Metadelphi.lnk")
 
             # Create shortcut
             shortcut = shell.CreateShortCut(shortcut_path)
             shortcut.TargetPath = str(Path(__file__).parent.parent / "launcher.bat")
             shortcut.WorkingDirectory = str(Path(__file__).parent.parent)
-            shortcut.Description = "UnifyLLM Multi-Agent Debate System"
+            shortcut.Description = "Metadelphi Multi-Agent Debate System"
 
             # Try to set icon if available
             icon_path = Path(__file__).parent / "icon.ico"
@@ -52,7 +55,10 @@ def create_windows_shortcut():
                                       os.environ.get('HOMEPATH', '\\Users\\' + os.environ.get('USERNAME', 'User')),
                                       'Desktop')
 
-            shortcut_path = os.path.join(desktop, "UnifyLLM.lnk")
+            legacy_shortcut_path = os.path.join(desktop, "UnifyLLM.lnk")
+            if os.path.exists(legacy_shortcut_path):
+                os.unlink(legacy_shortcut_path)
+            shortcut_path = os.path.join(desktop, "Metadelphi.lnk")
             launcher_path = str(Path(__file__).parent.parent / "launcher.bat").replace('/', '\\')
             working_dir = str(Path(__file__).parent.parent).replace('/', '\\')
 
@@ -66,7 +72,7 @@ Set oWS = WScript.CreateObject("WScript.Shell")
 Set oLink = oWS.CreateShortcut("{shortcut_path}")
 oLink.TargetPath = "{launcher_path}"
 oLink.WorkingDirectory = "{working_dir}"
-oLink.Description = "UnifyLLM Multi-Agent Debate System"
+oLink.Description = "Metadelphi Multi-Agent Debate System"
 oLink.IconLocation = "{icon_location}"
 oLink.Save
 '''
@@ -91,7 +97,7 @@ oLink.Save
 
     except Exception as e:
         print(f"Warning: Could not create desktop shortcut: {e}")
-        print("You can still launch UnifyLLM by running launcher.bat")
+        print("You can still launch Metadelphi by running launcher.bat")
         return False
 
 

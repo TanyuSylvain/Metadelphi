@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# UnifyLLM Installer Script for Unix (MacOS/Linux)
-# This script sets up UnifyLLM on your system
+# Metadelphi Installer Script for Unix (MacOS/Linux)
+# This script sets up Metadelphi on your system
 
 set -e
 
 echo "======================================"
-echo "  UnifyLLM Installation Wizard"
+echo "  Metadelphi Installation Wizard"
 echo "======================================"
 echo ""
 
@@ -137,7 +137,7 @@ echo ""
 
 # Run configuration wizard
 echo "Starting configuration wizard..."
-echo "Please configure at least one API key to use UnifyLLM"
+echo "Please configure at least one API key to use Metadelphi"
 echo ""
 $PYTHON_CMD installer/config_wizard.py
 
@@ -156,14 +156,14 @@ if [ $? -eq 0 ]; then
     echo "✓ Desktop launcher created"
 else
     echo "Warning: Failed to create desktop launcher"
-    echo "You can still launch UnifyLLM by running: ./launcher.sh"
+    echo "You can still launch Metadelphi by running: ./launcher.sh"
 fi
 
 echo ""
-read -p "Enable UnifyLLM auto-start at login? (y/n) " -n 1 -r
+read -p "Enable Metadelphi auto-start at login? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Setting up UnifyLLM auto-start service..."
+    echo "Setting up Metadelphi auto-start service..."
     ./setup_service.sh || echo "Warning: Failed to enable auto-start. You can try again later with: ./setup_service.sh"
 else
     echo "Auto-start not enabled."
@@ -175,9 +175,9 @@ echo "======================================"
 echo "  Installation Complete!"
 echo "======================================"
 echo ""
-echo "To start UnifyLLM:"
+echo "To start Metadelphi:"
 if [[ "$OS" == "MacOS" ]]; then
-    echo "  - Open UnifyLLM from Launchpad or ~/Applications folder, or"
+    echo "  - Open Metadelphi from Launchpad or ~/Applications folder, or"
 elif [[ "$OS" == "Linux" ]]; then
     echo "  - Use the desktop launcher, or"
 fi
@@ -190,9 +190,9 @@ echo "  ./setup_service.sh"
 echo ""
 
 # Ask if user wants to launch now
-read -p "Would you like to launch UnifyLLM now? (y/n) " -n 1 -r
+read -p "Would you like to launch Metadelphi now? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Launching UnifyLLM..."
+    echo "Launching Metadelphi..."
     ./launcher.sh
 fi

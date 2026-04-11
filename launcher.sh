@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# UnifyLLM Launcher Script
+# Metadelphi Launcher Script
 # This script starts both the backend and frontend servers
 
 cd "$(dirname "$0")"
@@ -46,7 +46,7 @@ open_browser() {
 }
 
 if $PYTHON_CMD service_runner.py status --quiet >/dev/null 2>&1; then
-    echo "UnifyLLM is already running in the background."
+    echo "Metadelphi is already running in the background."
     open_browser
     exit 0
 fi
@@ -60,7 +60,7 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-echo "Starting UnifyLLM..."
+echo "Starting Metadelphi..."
 echo "==================="
 
 # Start backend server
@@ -80,7 +80,7 @@ FRONTEND_PID=$!
 sleep 1
 
 echo ""
-echo "UnifyLLM is running!"
+echo "Metadelphi is running!"
 echo "==================="
 echo "Backend API: http://localhost:8000"
 echo "Frontend:    http://localhost:8080/index.html"

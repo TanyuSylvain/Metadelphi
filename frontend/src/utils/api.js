@@ -1,5 +1,5 @@
 /**
- * API Client for LLM GUI Backend
+ * API Client for the Metadelphi backend
  * Handles all communication with the FastAPI backend
  */
 

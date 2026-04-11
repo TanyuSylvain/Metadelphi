@@ -1,6 +1,12 @@
-# UnifyLLM - Multi-Agent LLM Studio System
+# Metadelphi - Multi-Agent LLM Studio System
 
 A powerful, cross-platform application for comparing and interacting with multiple Large Language Models through an intuitive debate interface. Built with LangGraph, FastAPI, and a clean web interface with streaming responses.
+
+`Metadelphi` is named for a higher-order Delphi: not a single oracle, but a council of intelligence. In the ancient Greek world, Delphi was the sacred place people turned to for guidance, judgment, and foresight. Instead of relying on one model at a time, Metadelphi brings multiple frontier models into the same reasoning loop, lets them debate, critique, and refine each other, and drives them toward a better final answer. The name signals exactly what the product is built for: orchestrated intelligence, not isolated generations.
+
+> "Know thyself."
+>
+> One of the Delphic maxims, and a fitting principle for a system designed to examine problems from multiple perspectives before committing to an answer.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
@@ -22,18 +28,18 @@ A powerful, cross-platform application for comparing and interacting with multip
 
 ### macOS
 1. Download the installer package (TAR.GZ file)
-2. Extract the archive: Double-click or run `tar -xzf unify_llm.tar.gz` in Terminal
-3. Open Terminal and navigate to the extracted directory: `cd unify_llm`
+2. Extract the archive: Double-click or run `tar -xzf metadelphi.tar.gz` in Terminal
+3. Open Terminal and navigate to the extracted directory: `cd metadelphi`
 4. Run: `./install.sh`
 5. Follow the on-screen instructions
 6. Configure your API keys in the GUI wizard
 7. Optionally enable auto-start at login during install, or later with `./setup_service.sh`
-8. Launch from **Launchpad** or **~/Applications/UnifyLLM.app**
+8. Launch from **Launchpad** or **~/Applications/Metadelphi.app**
 
 ### Linux
 1. Download the installer package (TAR.GZ file)
-2. Extract the archive: `tar -xzf unify_llm.tar.gz`
-3. Navigate to the extracted directory: `cd unify_llm`
+2. Extract the archive: `tar -xzf metadelphi.tar.gz`
+3. Navigate to the extracted directory: `cd metadelphi`
 4. Run: `./install.sh`
 5. Follow the on-screen instructions
 6. Configure your API keys in the GUI wizard
@@ -46,7 +52,7 @@ A powerful, cross-platform application for comparing and interacting with multip
 - ✅ Installs all dependencies (including SOCKS proxy support)
 - ✅ Launches a GUI wizard to configure API keys
 - ✅ Creates native application launchers:
-  - **macOS**: UnifyLLM.app in ~/Applications (appears in Launchpad)
+  - **macOS**: Metadelphi.app in ~/Applications (appears in Launchpad)
   - **Linux**: Desktop entry in Application Menu
   - **Windows**: Desktop shortcut
 - ✅ Optionally registers a per-user auto-start service at login
@@ -96,7 +102,7 @@ An autonomous coding agent that works directly in your local workspace:
 
 ### 🤖 Supported LLM Providers
 
-UnifyLLM supports **7 major AI providers** with multiple models:
+Metadelphi supports **7 major AI providers** with multiple models:
 
 | Provider | Models | Description |
 |----------|--------|-----------|
@@ -183,8 +189,8 @@ If you prefer manual setup or need custom configuration:
 ### 1. Clone or Download
 
 ```bash
-git clone https://github.com/your-repo/unify_llm.git
-cd unify_llm
+git clone https://github.com/your-repo/metadelphi.git
+cd metadelphi
 ```
 
 ### 2. Create Virtual Environment
@@ -280,7 +286,7 @@ The application will open automatically in your browser at:
 
 ---
 
-## 🎮 Using UnifyLLM
+## 🎮 Using Metadelphi
 
 ### Starting a Simple Chat
 
@@ -544,7 +550,7 @@ chmod +x install.sh launcher.sh
 
 ---
 
-## 🔄 Updating UnifyLLM
+## 🔄 Updating Metadelphi
 
 To update to a new version:
 
@@ -588,8 +594,8 @@ Contributions are welcome! Areas for improvement:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/unify_llm.git
-cd unify_llm
+git clone https://github.com/your-repo/metadelphi.git
+cd metadelphi
 
 # Create virtual environment
 python3 -m venv .venv

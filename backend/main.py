@@ -14,7 +14,7 @@ from backend.api.routes import api_router
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="LLM GUI API",
+    title="Metadelphi API",
     description="Multi-provider LLM chat API with streaming support",
     version="2.0.0",
     docs_url="/docs",
@@ -50,7 +50,7 @@ async def info():
     from backend.providers import ProviderRegistry
 
     return {
-        "name": "LLM GUI API",
+        "name": "Metadelphi API",
         "version": "2.0.0",
         "description": "Multi-provider LLM chat API",
         "providers": ProviderRegistry.list_providers(),

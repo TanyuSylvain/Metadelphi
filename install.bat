@@ -1,9 +1,9 @@
 @echo off
-REM UnifyLLM Installer Script for Windows
-REM This script sets up UnifyLLM on your system
+REM Metadelphi Installer Script for Windows
+REM This script sets up Metadelphi on your system
 
 echo ======================================
-echo   UnifyLLM Installation Wizard
+echo   Metadelphi Installation Wizard
 echo ======================================
 echo.
 
@@ -33,7 +33,7 @@ if not errorlevel 1 (
 
 echo ERROR: Python not found!
 echo.
-echo Python 3.10 or higher is required to run UnifyLLM.
+echo Python 3.10 or higher is required to run Metadelphi.
 echo.
 echo Please install Python from: https://www.python.org/downloads/
 echo.
@@ -128,7 +128,7 @@ echo.
 
 REM Run configuration wizard
 echo Starting configuration wizard...
-echo Please configure at least one API key to use UnifyLLM
+echo Please configure at least one API key to use Metadelphi
 echo.
 %PYTHON_CMD% installer\config_wizard.py
 
@@ -145,15 +145,15 @@ echo Creating desktop shortcut...
 
 if errorlevel 1 (
     echo Warning: Failed to create desktop shortcut
-    echo You can still launch UnifyLLM by running: launcher.bat
+    echo You can still launch Metadelphi by running: launcher.bat
 ) else (
     echo [OK] Desktop shortcut created
 )
 
 echo.
-set /p ENABLE_SERVICE="Enable UnifyLLM auto-start at login? (y/n) "
+set /p ENABLE_SERVICE="Enable Metadelphi auto-start at login? (y/n) "
 if /i "%ENABLE_SERVICE%"=="y" (
-    echo Setting up UnifyLLM auto-start service...
+    echo Setting up Metadelphi auto-start service...
     call setup_service.bat
     if errorlevel 1 (
         echo Warning: Failed to enable auto-start. You can try again later with: setup_service.bat
@@ -168,8 +168,8 @@ echo ======================================
 echo   Installation Complete!
 echo ======================================
 echo.
-echo To start UnifyLLM:
-echo   - Use the "UnifyLLM" shortcut on your desktop, or
+echo To start Metadelphi:
+echo   - Use the "Metadelphi" shortcut on your desktop, or
 echo   - Run: launcher.bat
 echo.
 echo The application will open in your default browser at:
@@ -179,9 +179,9 @@ echo   setup_service.bat
 echo.
 
 REM Ask if user wants to launch now
-set /p LAUNCH="Would you like to launch UnifyLLM now? (y/n) "
+set /p LAUNCH="Would you like to launch Metadelphi now? (y/n) "
 if /i "%LAUNCH%"=="y" (
-    echo Launching UnifyLLM...
+    echo Launching Metadelphi...
     start launcher.bat
 )
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Supervise the UnifyLLM backend and frontend for background service usage.
+Supervise the Metadelphi backend and frontend for background service usage.
 """
 
 from __future__ import annotations
@@ -26,16 +26,16 @@ def get_state_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
         if base:
-            return Path(base) / "UnifyLLM"
-        return Path.home() / "AppData" / "Local" / "UnifyLLM"
+            return Path(base) / "Metadelphi"
+        return Path.home() / "AppData" / "Local" / "Metadelphi"
 
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "UnifyLLM"
+        return Path.home() / "Library" / "Application Support" / "Metadelphi"
 
     base = os.environ.get("XDG_STATE_HOME")
     if base:
-        return Path(base) / "unifyllm"
-    return Path.home() / ".local" / "state" / "unifyllm"
+        return Path(base) / "metadelphi"
+    return Path.home() / ".local" / "state" / "metadelphi"
 
 
 STATE_DIR = get_state_dir()
@@ -141,7 +141,7 @@ def managed_supervisor_running() -> bool:
 def stop_service() -> int:
     pid = read_pid()
     if pid and process_exists(pid):
-        log(f"Stopping UnifyLLM service supervisor (pid {pid})")
+        log(f"Stopping Metadelphi service supervisor (pid {pid})")
         if sys.platform == "win32":
             result = subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
@@ -167,10 +167,10 @@ def stop_service() -> int:
         return 0
 
     if is_port_open(BACKEND_PORT) or is_port_open(FRONTEND_PORT):
-        print("Ports are in use, but no managed UnifyLLM service supervisor was found.")
+        print("Ports are in use, but no managed Metadelphi service supervisor was found.")
         return 1
 
-    print("UnifyLLM service is not running.")
+    print("Metadelphi service is not running.")
     cleanup_pid_files()
     return 0
 
@@ -187,16 +187,16 @@ def print_status(quiet: bool = False) -> int:
     if pid and process_exists(pid):
         if not quiet:
             status = "ready" if backend_ready and frontend_ready else "starting"
-            print(f"UnifyLLM service supervisor is running (pid {pid}, status: {status}).")
+            print(f"Metadelphi service supervisor is running (pid {pid}, status: {status}).")
         return 0
 
     if backend_ready and frontend_ready:
         if not quiet:
-            print("UnifyLLM is already reachable on ports 8000 and 8080.")
+            print("Metadelphi is already reachable on ports 8000 and 8080.")
         return 0
 
     if not quiet:
-        print("UnifyLLM service is not running.")
+        print("Metadelphi service is not running.")
     return 1
 
 
@@ -218,7 +218,7 @@ def run_supervisor() -> int:
     ensure_runtime_dirs()
 
     if managed_supervisor_running():
-        log("UnifyLLM service is already running; skipping duplicate start.")
+        log("Metadelphi service is already running; skipping duplicate start.")
         return 0
 
     backend_ready = is_port_open(BACKEND_PORT)
@@ -228,7 +228,7 @@ def run_supervisor() -> int:
             log("Ports 8000 and 8080 are already in use; not starting a duplicate service.")
             return 0
 
-        log("Port conflict detected while starting UnifyLLM; one required port is already in use.")
+        log("Port conflict detected while starting Metadelphi; one required port is already in use.")
         return 0
 
     write_pid_file()
@@ -238,7 +238,7 @@ def run_supervisor() -> int:
     frontend_proc: Optional[subprocess.Popen[bytes]] = None
 
     def shutdown(signum: int, _frame: object) -> None:
-        log(f"Received signal {signum}; shutting down UnifyLLM service.")
+        log(f"Received signal {signum}; shutting down Metadelphi service.")
         if frontend_proc is not None:
             terminate_process(frontend_proc, "frontend")
         if backend_proc is not None:
@@ -254,7 +254,7 @@ def run_supervisor() -> int:
     frontend_dir = APP_DIR / "frontend" / "src"
 
     try:
-        log("Starting UnifyLLM backend service.")
+        log("Starting Metadelphi backend service.")
         backend_proc = subprocess.Popen(
             [sys.executable, "-m", "backend.main"],
             cwd=APP_DIR,
@@ -263,7 +263,7 @@ def run_supervisor() -> int:
             stderr=subprocess.STDOUT,
         )
 
-        log("Starting UnifyLLM frontend service.")
+        log("Starting Metadelphi frontend service.")
         frontend_proc = subprocess.Popen(
             [
                 sys.executable,
@@ -295,7 +295,7 @@ def run_supervisor() -> int:
                 break
             time.sleep(0.5)
 
-        log("UnifyLLM background service is running.")
+        log("Metadelphi background service is running.")
 
         while True:
             if backend_proc.poll() is not None:
@@ -317,10 +317,10 @@ def run_supervisor() -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Manage the UnifyLLM background service.")
+    parser = argparse.ArgumentParser(description="Manage the Metadelphi background service.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("run", help="Run the UnifyLLM background supervisor.")
+    subparsers.add_parser("run", help="Run the Metadelphi background supervisor.")
 
     status_parser = subparsers.add_parser("status", help="Check service status.")
     status_parser.add_argument("--quiet", action="store_true", help="Suppress status output.")

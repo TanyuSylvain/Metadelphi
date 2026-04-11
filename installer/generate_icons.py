@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate placeholder icons for UnifyLLM
+Generate placeholder icons for Metadelphi
 This creates simple placeholder icons that can be replaced with custom designs
 """
 
@@ -117,7 +117,7 @@ For now, the application will work without a custom icon.
 
 def main():
     """Main entry point"""
-    print("Generating UnifyLLM icons...")
+    print("Generating Metadelphi icons...")
     result = create_placeholder_icons()
 
     if result:
