@@ -1,17 +1,15 @@
 """
 Google Gemini Image Generation provider implementation.
 
-Uses the native langchain-google-genai SDK (not the OpenAI-compatible endpoint)
-to support image output modality.
+Uses the native Gemini REST API (generateContent endpoint) to support
+image output modality with aspect ratio control.
 """
 
 import json
-import base64
 import logging
-from typing import List, Dict, AsyncIterator
+from typing import List, Dict, AsyncIterator, Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI, Modality
-from langchain_core.messages import HumanMessage, AIMessage
+import httpx
 
 from .base import BaseLLMProvider
 
@@ -19,19 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiImageProvider(BaseLLMProvider):
-    """Google Gemini image generation provider using the native GenAI SDK."""
+    """Google Gemini image generation provider using the native GenAI REST API."""
 
     MODELS = [
         {
-            "id": "gemini-3-pro-image-preview",
-            "name": "Gemini 3 Pro Image",
-            "description": "Gemini 3 Pro with native image generation",
+            "id": "gemini-3.1-flash-image-preview",
+            "name": "Gemini 3.1 Flash Image",
+            "description": "Gemini 3.1 Flash with native image generation",
             "supports_thinking": False,
             "thinking_locked": False,
             "is_image_model": True,
         },
         {
-            "id": "gemini-2.5-flash-image-preview",
+            "id": "gemini-2.5-flash-image",
             "name": "Gemini 2.5 Flash Image",
             "description": "Gemini 2.5 Flash with native image generation",
             "supports_thinking": False,
@@ -47,7 +45,7 @@ class GeminiImageProvider(BaseLLMProvider):
         return "Google Gemini Image"
 
     def supports_streaming(self) -> bool:
-        # Image generation is not streamable (returns full response at once)
+        # Image generation returns a full response at once
         return False
 
     def is_image_model(self, model_id: str) -> bool:
@@ -57,30 +55,39 @@ class GeminiImageProvider(BaseLLMProvider):
         return False
 
     def initialize(self, model_id: str, api_key: str, temperature: float = 0.7, **kwargs):
-        """Return a ChatGoogleGenerativeAI instance with image output enabled."""
+        """Store initialization config for later use."""
         validated_key = self.validate_api_key(api_key)
         validated_model = self.validate_model_id(model_id)
-        init_kwargs = dict(
-            model=validated_model,
-            google_api_key=validated_key,
-            response_modalities=[Modality.TEXT, Modality.IMAGE],
-            temperature=temperature,
-        )
-        # Pass custom base_url if provided (e.g. for proxy/custom endpoint)
-        base_url = kwargs.get("base_url")
-        if base_url:
-            init_kwargs["base_url"] = base_url
-        return ChatGoogleGenerativeAI(**init_kwargs)
+        return {
+            "model": validated_model,
+            "api_key": validated_key,
+            "temperature": temperature,
+            "base_url": kwargs.get("base_url"),
+        }
+
+    @staticmethod
+    def _resolve_native_base_url(base_url: Optional[str]) -> str:
+        """Derive the native Gemini base URL from the configured base URL."""
+        if not base_url:
+            return "https://generativelanguage.googleapis.com/v1beta"
+        if base_url.endswith("/v1beta/openai"):
+            return base_url[: -len("/openai")]
+        if base_url.endswith("/v1beta"):
+            return base_url
+        # For proxies like packyapi that serve native API under /v1beta
+        return f"{base_url}/v1beta"
 
     async def generate(
         self,
-        messages: List,
+        messages: List[Dict],
         model_id: str,
         api_key: str,
-        temperature: float = 0.7,
+        base_url: Optional[str] = None,
+        aspect_ratio: Optional[str] = None,
     ) -> AsyncIterator[Dict]:
         """
-        Invoke the image model and yield SSE-ready event dicts.
+        Invoke the image model via native Gemini generateContent and yield
+        SSE-ready event dicts.
 
         Yields dicts with type:
           - {"type": "text_chunk", "content": "..."}
@@ -88,82 +95,79 @@ class GeminiImageProvider(BaseLLMProvider):
           - {"type": "done"}
           - {"type": "error", "message": "..."}
         """
+        native_base = self._resolve_native_base_url(base_url)
+        endpoint = f"{native_base}/models/{model_id}:generateContent?key={api_key}"
+
+        body = {
+            "contents": messages,
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"],
+            },
+        }
+        if aspect_ratio:
+            body["generationConfig"]["imageConfig"] = {"aspectRatio": aspect_ratio}
+
         try:
-            llm = self.initialize(model_id, api_key, temperature)
-            response = await llm.ainvoke(messages)
-
-            if isinstance(response.content, list):
-                image_index = 0
-                text_parts = []
-                image_parts = []
-
-                for item in response.content:
-                    if isinstance(item, str) and item.strip():
-                        text_parts.append(item)
-                    elif isinstance(item, dict):
-                        # langchain-google-genai returns image as {"type": "image_url", "image_url": {"url": "data:..."}}
-                        if "image_url" in item:
-                            url = item["image_url"].get("url", "")
-                            if "," in url:
-                                b64_data = url.split(",", 1)[1]
-                            else:
-                                b64_data = url
-                            image_parts.append({"data": b64_data, "mime_type": "image/png", "index": image_index})
-                            image_index += 1
-                        # Some versions return inline_data style
-                        elif "inline_data" in item:
-                            inline = item["inline_data"]
-                            b64_data = inline.get("data", "")
-                            if isinstance(b64_data, bytes):
-                                b64_data = base64.b64encode(b64_data).decode()
-                            image_parts.append({
-                                "data": b64_data,
-                                "mime_type": inline.get("mime_type", "image/png"),
-                                "index": image_index,
-                            })
-                            image_index += 1
-
-                # Yield text first
-                for text in text_parts:
-                    yield {"type": "text_chunk", "content": text}
-
-                # Then yield images
-                for img in image_parts:
-                    yield {"type": "image", **img}
-
-            elif isinstance(response.content, str) and response.content.strip():
-                yield {"type": "text_chunk", "content": response.content}
-
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(endpoint, json=body)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Gemini image API HTTP error: {e.response.text}")
+            yield {"type": "error", "message": f"Gemini API error: {e.response.text}"}
+            return
         except Exception as e:
             logger.error(f"Image generation error: {e}")
             yield {"type": "error", "message": str(e)}
             return
 
+        candidates = data.get("candidates", [])
+        if not candidates:
+            yield {"type": "error", "message": "No candidates in Gemini response"}
+            return
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        image_index = 0
+        for part in parts:
+            if "text" in part:
+                yield {"type": "text_chunk", "content": part["text"]}
+            elif "inlineData" in part:
+                inline = part["inlineData"]
+                mime_type = inline.get("mimeType", "image/png")
+                b64_data = inline.get("data", "")
+                yield {
+                    "type": "image",
+                    "data": b64_data,
+                    "mime_type": mime_type,
+                    "index": image_index,
+                }
+                image_index += 1
+
         yield {"type": "done"}
 
     @staticmethod
-    def build_messages(history: List[Dict], new_message: str) -> List:
+    def build_messages(history: List[Dict], new_message: str) -> List[Dict]:
         """
-        Build a LangChain messages list from stored conversation history.
+        Build a native Gemini contents list from stored conversation history.
 
         For image assistant messages (stored as JSON), only the text part is
         included in history to keep context manageable.
         """
-        messages = []
+        contents = []
         for msg in history:
             role = msg.get("role")
             content = msg.get("content", "")
             if role == "user":
-                messages.append(HumanMessage(content=content))
+                contents.append({"role": "user", "parts": [{"text": content}]})
             elif role == "assistant":
                 # Try to parse JSON image response — use only text for context
                 try:
                     parsed = json.loads(content)
                     text = parsed.get("text", "")
                     if text:
-                        messages.append(AIMessage(content=text))
+                        contents.append({"role": "model", "parts": [{"text": text}]})
                 except (json.JSONDecodeError, TypeError):
                     if content:
-                        messages.append(AIMessage(content=content))
-        messages.append(HumanMessage(content=new_message))
-        return messages
+                        contents.append({"role": "model", "parts": [{"text": content}]})
+        contents.append({"role": "user", "parts": [{"text": new_message}]})
+        return contents

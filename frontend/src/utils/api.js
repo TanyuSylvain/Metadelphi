@@ -141,14 +141,18 @@ export class APIClient {
      */
     async streamImageMessage(message, conversationId, modelId, onEvent, options = {}) {
         try {
+            const body = {
+                message,
+                conversation_id: conversationId,
+                model: modelId,
+            };
+            if (options.aspect_ratio) {
+                body.aspect_ratio = options.aspect_ratio;
+            }
             const response = await fetch(`${this.baseURL}/chat/image/stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message,
-                    conversation_id: conversationId,
-                    model: modelId,
-                }),
+                body: JSON.stringify(body),
                 signal: options.signal,
             });
 

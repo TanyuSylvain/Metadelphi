@@ -69,9 +69,10 @@ export class ModelSelector {
             this.selectElement.appendChild(optgroup);
         });
 
-        // Select first model by default
-        if (this.models.length > 0) {
-            this.selectElement.value = this.models[0].model_id;
+        // Select first available (filtered) model by default
+        const firstProvider = Object.values(groupedModels)[0];
+        if (firstProvider && firstProvider.length > 0) {
+            this.selectElement.value = firstProvider[0].model_id;
         }
     }
 

@@ -1,7 +1,6 @@
 # Core Web Framework
 fastapi>=0.115.0
 uvicorn>=0.32.0
-starlette>=0.41.0
 
 # LangChain and AI
 langchain==1.2.2
@@ -11,7 +10,6 @@ langchain-openai==1.1.7
 langgraph==1.0.5
 langgraph-prebuilt==1.0.5
 langchain-mcp-adapters>=0.1.0
-langchain-google-genai>=2.0.0
 
 # Data Validation
 pydantic>=2.10.0
@@ -21,19 +19,7 @@ pydantic-settings>=2.6.0
 python-dotenv>=1.0.0
 
 # Database
-sqlalchemy>=2.0.0
 aiosqlite>=0.20.0
 
 # HTTP Clients
 httpx[socks]>=0.28.0
-httpx-sse>=0.4.3
-requests>=2.32.0
-
-# AI/ML Libraries
-openai>=2.14.0
-
-# Utilities
-python-dateutil>=2.9.0
-rich>=13.0.0
-typer>=0.21.0
-pyyaml>=6.0.0

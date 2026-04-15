@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(None, description="Model ID to use (e.g., 'mistral-large-latest')")
     thinking: Optional[bool] = Field(None, description="Enable thinking mode for models that support it")
     web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
+    aspect_ratio: Optional[str] = Field(None, description="Aspect ratio for image generation (e.g. 1:1, 16:9)")
 
     class Config:
         json_schema_extra = {

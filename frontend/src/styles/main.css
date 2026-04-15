@@ -359,6 +359,32 @@ body {
     background: #3a3a5e;
 }
 
+/* Aspect Ratio Selector */
+.aspect-ratio-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.aspect-ratio-selector label {
+    font-size: 0.9rem;
+}
+
+.aspect-ratio-selector select {
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
+    border: 1px solid #444;
+    background: #2a2a4e;
+    color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    outline: none;
+}
+
+.aspect-ratio-selector select:hover {
+    background: #3a3a5e;
+}
+
 /* Thinking Toggle */
 .thinking-toggle {
     display: flex;

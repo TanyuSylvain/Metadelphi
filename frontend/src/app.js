@@ -119,6 +119,7 @@ export class ChatApp {
         this.isCoworkingMode = false;
         this.isImageMode = false;
         this.imageModeConversationStarted = false; // locks checkbox after first message
+        this.imageAspectRatio = getStorage('imageAspectRatio') || '1:1';
 
         // Debate panel visibility state
         this.debatePanelVisible = false;
@@ -242,11 +243,17 @@ export class ChatApp {
                 }
                 this.isImageMode = e.target.checked;
                 this.modelSelector.setImageMode(this.isImageMode);
-                // Update thinking toggle visibility (no thinking for image models)
-                const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
-                if (thinkingContainer) {
-                    thinkingContainer.style.display = this.isImageMode ? 'none' : '';
-                }
+                this.updateMultiAgentUIVisibility();
+            });
+        }
+
+        // Aspect ratio selector
+        const aspectRatioSelect = document.getElementById('aspectRatioSelect');
+        if (aspectRatioSelect) {
+            aspectRatioSelect.value = this.imageAspectRatio;
+            aspectRatioSelect.addEventListener('change', (e) => {
+                this.imageAspectRatio = e.target.value;
+                setStorage('imageAspectRatio', this.imageAspectRatio);
             });
         }
 
@@ -704,17 +711,31 @@ export class ChatApp {
         // Show/hide simple mode controls (visible in simple and coworking modes)
         const simpleControls = document.querySelector('.model-selector-container');
         const thinkingContainer = document.querySelector('.thinking-toggle');
+        const markdownContainer = document.querySelector('.markdown-toggle');
+        const aspectRatioContainer = document.getElementById('aspectRatioSelectorContainer');
         if (simpleControls) {
             simpleControls.style.display = this.isMultiAgentMode ? 'none' : 'flex';
         }
         if (thinkingContainer) {
             thinkingContainer.style.display = (this.isMultiAgentMode || this.isImageMode) ? 'none' : 'flex';
         }
+        if (markdownContainer) {
+            markdownContainer.style.display = this.isImageMode ? 'none' : 'flex';
+        }
+        if (aspectRatioContainer) {
+            aspectRatioContainer.style.display = this.isImageMode ? 'flex' : 'none';
+        }
 
-        // Show/hide web search toggle (visible in simple and coworking modes, hidden in debate)
+        // Show/hide web search toggle (visible in simple and coworking modes, hidden in debate and image)
         const webSearchContainer = document.getElementById('webSearchToggleContainer');
         if (webSearchContainer) {
-            webSearchContainer.style.display = this.isMultiAgentMode ? 'none' : 'flex';
+            webSearchContainer.style.display = (this.isMultiAgentMode || this.isImageMode) ? 'none' : 'flex';
+        }
+
+        // Show/hide image mode toggle (hidden in debate and coworking modes)
+        const imageModeToggleContainer = document.getElementById('imageModeToggleContainer');
+        if (imageModeToggleContainer) {
+            imageModeToggleContainer.style.display = (this.isMultiAgentMode || this.isCoworkingMode) ? 'none' : 'flex';
         }
 
         // Update debate toggle button visibility
@@ -833,8 +854,14 @@ export class ChatApp {
 
             await this.restoreCoworkingSessionState(conversationInfo);
 
+            // Load the full history if conversation exists
+            const history = await this.apiClient.getConversationHistory(this.conversationId);
+
             // Restore image mode if this is an image conversation
-            if (conversationInfo.mode === 'image') {
+            const hasImageMessages = history && history.messages && history.messages.some(
+                msg => msg.message_type === 'image_response'
+            );
+            if (conversationInfo.mode === 'image' || hasImageMessages) {
                 this.isImageMode = true;
                 this.imageModeConversationStarted = true;
                 const imageModeToggle = document.getElementById('imageModeToggle');
@@ -844,15 +871,9 @@ export class ChatApp {
                     imageModeToggle.title = 'Cannot change image mode during a conversation';
                 }
                 this.modelSelector.setImageMode(true);
-                // Hide thinking toggle for image mode
-                const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
-                if (thinkingContainer) {
-                    thinkingContainer.style.display = 'none';
-                }
+                this.updateMultiAgentUIVisibility();
             }
 
-            // Load the full history if conversation exists
-            const history = await this.apiClient.getConversationHistory(this.conversationId);
             if (history && history.messages && history.messages.length > 0) {
                 this.messageComponent.loadMessages(history.messages, this.isMarkdownEnabled);
             }
@@ -1052,6 +1073,8 @@ export class ChatApp {
         const images = [];
 
         try {
+            const streamOptions = this.getStreamOptions();
+            streamOptions.aspect_ratio = this.imageAspectRatio;
             await this.apiClient.streamImageMessage(
                 message,
                 this.conversationId,
@@ -1066,7 +1089,7 @@ export class ChatApp {
                         throw new Error(event.message);
                     }
                 },
-                this.getStreamOptions()
+                streamOptions
             );
 
             // Replace typing indicator with full image message
@@ -1558,6 +1581,16 @@ export class ChatApp {
         const wasCoworking = this.isCoworkingMode;
         console.log(`[ModeSwitch] Attempting to switch to ${targetMode}`);
 
+        // Block switching out of an active image conversation
+        if (this.isImageMode && this.imageModeConversationStarted && targetMode !== 'simple') {
+            this.messageComponent.addSystemMessage(
+                'Cannot switch to ' + targetMode + ' mode: this is an image generation conversation.'
+            );
+            const revertMode = wasMultiAgent ? 'multi-agent' : (wasCoworking ? 'coworking' : 'simple');
+            this.modeSelector.setModeSilent(revertMode);
+            return;
+        }
+
         // Update UI state first
         this.isMultiAgentMode = mode === 'multi-agent';
         this.isCoworkingMode = mode === 'coworking';
@@ -1700,11 +1733,7 @@ export class ChatApp {
             imageModeToggle.title = '';
         }
         this.modelSelector.setImageMode(false);
-        // Re-show thinking toggle
-        const thinkingContainer = this.thinkingToggle ? this.thinkingToggle.closest('.thinking-toggle') : null;
-        if (thinkingContainer) {
-            thinkingContainer.style.display = '';
-        }
+        this.updateMultiAgentUIVisibility();
     }
 
     createNewConversation() {

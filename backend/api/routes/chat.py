@@ -171,9 +171,10 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     conversation_id = request.conversation_id or str(uuid.uuid4())
-    model_id = request.model or "gemini-2.5-flash-image-preview"
+    model_id = request.model or "gemini-2.5-flash-image"
 
     api_key = settings.get_api_key("gemini")
+    base_url = settings.get_base_url("gemini")
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
@@ -186,13 +187,19 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
         if task:
             await run_context.register_task(task)
         try:
-            # Ensure conversation exists in storage
-            if not await _storage.conversation_exists(conversation_id):
+            # Ensure conversation exists in storage and is marked as image mode
+            conversation = await _storage.get_conversation(conversation_id)
+            if not conversation:
                 await _storage.create_conversation(
                     conversation_id=conversation_id,
                     model=model_id,
                     mode="image",
                     title=request.message[:60],
+                )
+            elif conversation.get("mode") != "image":
+                await _storage.update_conversation_metadata(
+                    conversation_id,
+                    {"mode": "image"}
                 )
 
             # Load history for multi-turn support
@@ -209,7 +216,13 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
             text_acc = []
             image_acc = []
 
-            async for event in provider.generate(messages, model_id, api_key):
+            async for event in provider.generate(
+                messages,
+                model_id,
+                api_key,
+                base_url=base_url,
+                aspect_ratio=request.aspect_ratio,
+            ):
                 if await http_request.is_disconnected():
                     await run_context.cancel()
                     return
