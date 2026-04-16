@@ -290,11 +290,20 @@ body {
 .header {
     background: #1a1a2e;
     color: white;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 3rem 0.75rem 1rem;
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.header-top {
     display: flex;
     align-items: center;
     gap: 1rem;
+    width: 100%;
+    justify-content: flex-start;
 }
 
 .header-sidebar-toggle {
@@ -329,8 +338,11 @@ body {
 .controls {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 1.5rem;
+    flex-wrap: nowrap;
+    width: calc(100% - 2rem);
+    margin-right: 2rem;
 }
 
 /* Model Selector */
@@ -1071,7 +1083,39 @@ body {
 }
 
 .mode-label {
+    display: none;
     font-weight: 500;
+}
+
+.mode-btn {
+    padding: 0.4rem;
+    justify-content: center;
+}
+
+.controls {
+    gap: 0.75rem;
+}
+
+.model-selector-container {
+    gap: 0.4rem;
+}
+
+@media (min-width: 1300px) {
+    .controls {
+        gap: 1.5rem;
+    }
+
+    .model-selector-container {
+        gap: 0.6rem;
+    }
+
+    .mode-label {
+        display: inline;
+    }
+
+    .mode-btn {
+        padding: 0.4rem 0.8rem;
+    }
 }
 
 /* Multi-Agent Configuration Panel */
@@ -2470,7 +2514,7 @@ body {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .message.image-response {
