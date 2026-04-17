@@ -74,7 +74,9 @@ class GeminiImageProvider(BaseLLMProvider):
             return base_url[: -len("/openai")]
         if base_url.endswith("/v1beta"):
             return base_url
-        # For proxies like packyapi that serve native API under /v1beta
+        # Text models use /v1 (OpenAI-compatible); image models need /v1beta
+        if base_url.endswith("/v1"):
+            return base_url[:-len("/v1")] + "/v1beta"
         return f"{base_url}/v1beta"
 
     async def generate(
