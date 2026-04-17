@@ -490,6 +490,7 @@ export class ChatApp {
         const panelDivider = document.getElementById('panelDivider');
         const chatContainer = document.querySelector('.chat-container');
         const debatePanel = document.getElementById('debatePanel');
+        const coworkingPanel = document.getElementById('coworkingPanel');
         const mainPanel = document.querySelector('.main-panel');
 
         if (panelDivider && chatContainer && debatePanel && mainPanel) {
@@ -503,13 +504,20 @@ export class ChatApp {
 
             let isResizing = false;
             let startX = 0;
+            let startChatWidth = 0;
 
             panelDivider.addEventListener('mousedown', (e) => {
                 isResizing = true;
                 startX = e.clientX;
+                startChatWidth = chatContainer.getBoundingClientRect().width;
                 panelDivider.classList.add('active');
                 chatContainer.classList.add('resizing');
-                debatePanel.classList.add('resizing');
+                if (debatePanel.style.display !== 'none') {
+                    debatePanel.classList.add('resizing');
+                }
+                if (coworkingPanel && coworkingPanel.style.display !== 'none') {
+                    coworkingPanel.classList.add('resizing');
+                }
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
                 e.preventDefault();
@@ -517,12 +525,17 @@ export class ChatApp {
 
             document.addEventListener('mousemove', (e) => {
                 if (!isResizing) return;
-                const mainRect = mainPanel.getBoundingClientRect();
-                const relativeX = e.clientX - mainRect.left;
-                const totalWidth = mainRect.width;
-                // Calculate ratio (accounting for gap and padding)
-                let ratio = relativeX / totalWidth;
-                ratio = Math.min(Math.max(ratio, 0.2), 0.8); // Limit between 20% and 80%
+                const cs = getComputedStyle(mainPanel);
+                const paddingL = parseFloat(cs.paddingLeft);
+                const paddingR = parseFloat(cs.paddingRight);
+                const gap = parseFloat(cs.gap) || 0;
+                const contentWidth = mainPanel.getBoundingClientRect().width - paddingL - paddingR;
+                const fixedSpace = gap * 2 + panelDivider.offsetWidth;
+                const flexSpace = Math.max(contentWidth - fixedSpace, 1);
+
+                const diff = e.clientX - startX;
+                const newChatWidth = Math.min(Math.max(startChatWidth + diff, flexSpace * 0.2), flexSpace * 0.8);
+                const ratio = newChatWidth / flexSpace;
                 mainPanel.style.setProperty('--chat-flex', ratio);
                 mainPanel.style.setProperty('--debate-flex', 1 - ratio);
             });
@@ -533,6 +546,7 @@ export class ChatApp {
                 panelDivider.classList.remove('active');
                 chatContainer.classList.remove('resizing');
                 debatePanel.classList.remove('resizing');
+                if (coworkingPanel) coworkingPanel.classList.remove('resizing');
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
                 // Save ratio
@@ -604,21 +618,23 @@ export class ChatApp {
     }
 
     /**
-     * Hide debate panel and divider
+     * Hide debate panel and divider (unless coworking panel is visible)
      */
     hideDebatePanel() {
         const debatePanel = document.getElementById('debatePanel');
         const panelDivider = document.getElementById('panelDivider');
         const chatContainer = document.querySelector('.chat-container');
+        const coworkingPanel = document.getElementById('coworkingPanel');
 
         if (debatePanel) {
             debatePanel.style.display = 'none';
             this.debatePanelVisible = false;
         }
-        if (panelDivider) {
+        const coworkingVisible = coworkingPanel && coworkingPanel.style.display !== 'none';
+        if (panelDivider && !coworkingVisible) {
             panelDivider.classList.remove('visible');
         }
-        if (chatContainer) {
+        if (chatContainer && !coworkingVisible) {
             chatContainer.classList.add('full-width');
         }
     }
@@ -1556,20 +1572,22 @@ export class ChatApp {
     }
 
     /**
-     * Hide coworking panel
+     * Hide coworking panel (unless debate panel is visible)
      */
     hideCoworkingPanel() {
         const coworkingPanel = document.getElementById('coworkingPanel');
         const panelDivider = document.getElementById('panelDivider');
         const chatContainer = document.querySelector('.chat-container');
+        const debatePanel = document.getElementById('debatePanel');
 
         if (coworkingPanel) {
             coworkingPanel.style.display = 'none';
         }
-        if (panelDivider) {
+        const debateVisible = debatePanel && debatePanel.style.display !== 'none';
+        if (panelDivider && !debateVisible) {
             panelDivider.classList.remove('visible');
         }
-        if (chatContainer) {
+        if (chatContainer && !debateVisible) {
             chatContainer.classList.add('full-width');
         }
     }
