@@ -12,6 +12,7 @@ from typing import List, Dict, AsyncIterator, Optional
 import httpx
 
 from .base import BaseLLMProvider
+from backend.utils.errors import sanitize_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +117,17 @@ class GeminiImageProvider(BaseLLMProvider):
                 data = response.json()
         except httpx.HTTPStatusError as e:
             logger.error(f"Gemini image API HTTP error: {e.response.text}")
-            yield {"type": "error", "message": f"Gemini API error: {e.response.text}"}
+            yield {
+                "type": "error",
+                "message": sanitize_error_message(e, default="Image generation failed."),
+            }
             return
         except Exception as e:
             logger.error(f"Image generation error: {e}")
-            yield {"type": "error", "message": str(e)}
+            yield {
+                "type": "error",
+                "message": sanitize_error_message(e, default="Image generation failed."),
+            }
             return
 
         candidates = data.get("candidates", [])

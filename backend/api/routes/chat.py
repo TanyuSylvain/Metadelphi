@@ -9,13 +9,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.api.schemas import ChatRequest, ChatResponse
-from backend.api.run_control import persist_cancellation_notice, run_manager
+from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.agent import LangGraphAgent
 from backend.core.run_manager import RunCancelledError
 from backend.tools.web_search import get_web_search_tools
 from backend.storage import get_storage
 from backend.config import settings
 from backend.providers.gemini_image import GeminiImageProvider
+from backend.utils.errors import sanitize_error_message
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -27,6 +28,11 @@ _storage = get_storage(
 
 # Agent pool (keyed by model_id + thinking mode)
 _agents: dict[str, LangGraphAgent] = {}
+
+
+def _format_sse_event(event: dict) -> str:
+    """Serialize a stream event as SSE."""
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 async def get_agent(model_id: str, thinking: bool = False, web_search: bool = False) -> LangGraphAgent:
@@ -90,7 +96,7 @@ async def chat(request: ChatRequest):
             model=model_id
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.post("/stream")
@@ -102,7 +108,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
         request: ChatRequest with message, optional conversation_id, and optional model
 
     Returns:
-        StreamingResponse with chunks of the agent's response
+        StreamingResponse with SSE events for response chunks and terminal status
     """
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
@@ -129,14 +135,21 @@ async def chat_stream(http_request: Request, request: ChatRequest):
                 if await http_request.is_disconnected():
                     await run_context.cancel()
                     raise RunCancelledError("Client disconnected")
-                yield chunk
+                yield _format_sse_event({"type": "chunk", "content": chunk})
         except asyncio.CancelledError:
             await run_context.cancel()
             await persist_cancellation_notice(_storage, conversation_id)
         except RunCancelledError:
             await persist_cancellation_notice(_storage, conversation_id)
+            if not await http_request.is_disconnected():
+                yield _format_sse_event({"type": "cancelled", "message": CANCELLATION_MESSAGE})
         except Exception as e:
-            yield f"\n[Error: {str(e)}]"
+            yield _format_sse_event({
+                "type": "error",
+                "error": sanitize_error_message(e),
+            })
+        else:
+            yield _format_sse_event({"type": "done"})
         finally:
             if task:
                 await run_context.unregister_task(task)
@@ -145,7 +158,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
 
     return StreamingResponse(
         generate(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -255,8 +268,11 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
             await run_context.cancel()
             await persist_cancellation_notice(_storage, conversation_id)
         except Exception as e:
-            err_event = {"type": "error", "message": str(e)}
-            yield f"data: {json.dumps(err_event)}\n\n"
+            err_event = {
+                "type": "error",
+                "message": sanitize_error_message(e, default="Image generation failed."),
+            }
+            yield _format_sse_event(err_event)
         finally:
             if task:
                 await run_context.unregister_task(task)

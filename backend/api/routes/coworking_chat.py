@@ -26,6 +26,7 @@ from backend.core.run_manager import RunCancelledError
 from backend.tools.workspace_tools import resolve_in_workspace
 from backend.storage import get_storage
 from backend.config import settings
+from backend.utils.errors import sanitize_error_message
 
 router = APIRouter(prefix="/chat/coworking", tags=["coworking-chat"])
 
@@ -198,7 +199,7 @@ async def coworking_chat_stream(http_request: Request, request: CoworkingChatReq
         except Exception as e:
             error_event = json.dumps({
                 "type": "error",
-                "error": str(e)
+                "error": sanitize_error_message(e)
             }, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
         finally:

@@ -80,12 +80,15 @@ export class APIClient {
      * @param {string} message - User message
      * @param {string} conversationId - Conversation ID
      * @param {string} modelId - Model ID to use
-     * @param {Function} onChunk - Callback for each chunk
+     * @param {Object|Function} callbacks - Stream event callbacks or legacy onChunk callback
      * @param {boolean} thinking - Enable thinking mode
      * @returns {Promise<void>}
      */
-    async streamMessage(message, conversationId, modelId, onChunk, thinking = false, webSearch = false, options = {}) {
+    async streamMessage(message, conversationId, modelId, callbacks, thinking = false, webSearch = false, options = {}) {
         try {
+            const streamCallbacks = typeof callbacks === 'function'
+                ? { onChunk: callbacks }
+                : (callbacks || {});
             const body = {
                 message,
                 conversation_id: conversationId,
@@ -115,19 +118,91 @@ export class APIClient {
                 options.onRunStart(runId);
             }
 
+            if (!response.body) {
+                throw new Error('Stream response body is unavailable');
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
-                onChunk(chunk);
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) {
+                        continue;
+                    }
+
+                    try {
+                        const eventData = JSON.parse(line.slice(6));
+                        this._handleSimpleStreamEvent(eventData, streamCallbacks);
+                    } catch (e) {
+                        if (e && (e.isStreamError || e.isCancellation)) {
+                            throw e;
+                        }
+                        console.warn('Failed to parse simple chat SSE event:', line);
+                    }
+                }
+            }
+
+            if (buffer.startsWith('data: ')) {
+                try {
+                    const eventData = JSON.parse(buffer.slice(6));
+                    this._handleSimpleStreamEvent(eventData, streamCallbacks);
+                } catch (e) {
+                    if (e && (e.isStreamError || e.isCancellation)) {
+                        throw e;
+                    }
+                }
             }
         } catch (error) {
             console.error('Error streaming message:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Handle a simple chat SSE event.
+     * @private
+     */
+    _handleSimpleStreamEvent(event, callbacks) {
+        switch (event.type) {
+            case 'chunk':
+                if (callbacks.onChunk) {
+                    callbacks.onChunk(event.content || '');
+                }
+                break;
+            case 'done':
+                if (callbacks.onDone) {
+                    callbacks.onDone();
+                }
+                break;
+            case 'cancelled': {
+                const message = event.message || 'Current task was cancelled.';
+                if (callbacks.onCancelled) {
+                    callbacks.onCancelled(message);
+                }
+                const error = new Error(message);
+                error.isCancellation = true;
+                throw error;
+            }
+            case 'error': {
+                const message = event.error || 'Request failed';
+                if (callbacks.onError) {
+                    callbacks.onError(message);
+                }
+                const error = new Error(message);
+                error.isStreamError = true;
+                throw error;
+            }
+            default:
+                console.warn('Unknown simple chat event type:', event.type);
         }
     }
 
@@ -166,6 +241,10 @@ export class APIClient {
                 options.onRunStart(runId);
             }
 
+            if (!response.body) {
+                throw new Error('Image stream response body is unavailable');
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
@@ -184,8 +263,25 @@ export class APIClient {
                             const event = JSON.parse(line.slice(6));
                             onEvent(event);
                         } catch (e) {
-                            // ignore malformed lines
+                            if (e instanceof SyntaxError) {
+                                console.warn('Failed to parse image SSE event:', line);
+                                continue;
+                            }
+                            throw e;
                         }
+                    }
+                }
+            }
+
+            if (buffer.startsWith('data: ')) {
+                try {
+                    const event = JSON.parse(buffer.slice(6));
+                    onEvent(event);
+                } catch (e) {
+                    if (e instanceof SyntaxError) {
+                        console.warn('Failed to parse trailing image SSE event:', buffer);
+                    } else {
+                        throw e;
                     }
                 }
             }

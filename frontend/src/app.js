@@ -964,21 +964,23 @@ export class ChatApp {
                 message,
                 this.conversationId,
                 modelId,
-                (chunk) => {
-                    // Accumulate response
-                    fullResponse += chunk;
-                    if (fullResponse.includes('<think')) {
-                        this.messageComponent.updateMessageWithThinking(
-                            typingIndicator,
-                            fullResponse,
-                            this.isMarkdownEnabled
-                        );
-                    } else {
-                        this.messageComponent.updateMessage(
-                            typingIndicator,
-                            fullResponse,
-                            this.isMarkdownEnabled
-                        );
+                {
+                    onChunk: (chunk) => {
+                        // Accumulate response
+                        fullResponse += chunk;
+                        if (fullResponse.includes('<think')) {
+                            this.messageComponent.updateMessageWithThinking(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        } else {
+                            this.messageComponent.updateMessage(
+                                typingIndicator,
+                                fullResponse,
+                                this.isMarkdownEnabled
+                            );
+                        }
                     }
                 },
                 this.isThinkingEnabled,
@@ -1024,17 +1026,17 @@ export class ChatApp {
             this.sidebar.setCurrentConversation(this.conversationId);
 
         } catch (error) {
-            if (this.cancelRequested && this.isAbortError(error)) {
+            if (error.isCancellation || (this.cancelRequested && this.isAbortError(error))) {
                 if (!fullResponse.trim()) {
                     this.messageComponent.removeTypingIndicator(typingIndicator);
                 }
-                this.showCancellationMessage();
+                this.showCancellationMessage(error.isCancellation ? error.message : undefined);
             } else {
                 console.error('Error sending message:', error);
-                this.messageComponent.removeTypingIndicator(typingIndicator);
-                this.messageComponent.addErrorMessage(
-                    `Error: ${error.message}`
-                );
+                if (!fullResponse.trim()) {
+                    this.messageComponent.removeTypingIndicator(typingIndicator);
+                }
+                this.messageComponent.addErrorMessage(error.message);
             }
         } finally {
             this.setProcessing(false);

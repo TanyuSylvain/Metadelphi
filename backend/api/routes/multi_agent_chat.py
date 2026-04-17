@@ -23,6 +23,7 @@ from backend.core.run_manager import RunCancelledError
 from backend.storage import get_storage
 from backend.config import settings
 from backend.providers import ProviderFactory, ProviderRegistry
+from backend.utils.errors import sanitize_error_message
 
 router = APIRouter(prefix="/chat/multi-agent", tags=["multi-agent-chat"])
 
@@ -206,7 +207,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.post("/stream")
@@ -291,7 +292,7 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
         except Exception as e:
             error_event = json.dumps({
                 "type": "error",
-                "error": str(e)
+                "error": sanitize_error_message(e)
             }, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
         finally:

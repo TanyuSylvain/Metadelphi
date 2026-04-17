@@ -17,6 +17,7 @@ from backend.utils.parallel_tools import (
     execute_tools_parallel,
     create_tool_messages,
 )
+from backend.utils.errors import sanitize_error_message, DEFAULT_UPSTREAM_ERROR_MESSAGE
 
 __all__ = [
     "TextProcessor",
@@ -31,4 +32,6 @@ __all__ = [
     "execute_single_tool",
     "execute_tools_parallel",
     "create_tool_messages",
+    "sanitize_error_message",
+    "DEFAULT_UPSTREAM_ERROR_MESSAGE",
 ]

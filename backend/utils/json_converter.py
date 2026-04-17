@@ -15,8 +15,6 @@ import json
 import re
 import logging
 
-from backend.providers import ProviderFactory
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +40,10 @@ class JsonConverter:
     def _get_converter_llm(self):
         """Get or create a cached JSON converter LLM (qwen3.5-flash with JSON mode)."""
         if self._converter_llm is None:
+            # Import lazily to avoid a startup cycle when backend.providers loads
+            # a provider that imports a submodule from backend.utils.
+            from backend.providers import ProviderFactory
+
             self._converter_llm = ProviderFactory.create_llm(
                 model_id="qwen3.5-flash",
                 provider_name="qwen",
