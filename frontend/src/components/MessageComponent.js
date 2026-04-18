@@ -8,9 +8,20 @@ import { getStorage, setStorage, purifyContent, copyToClipboard } from '../utils
 import { ThinkParser } from '../utils/thinkParser.js';
 import { SmartScroller } from '../utils/smartScroller.js';
 
+const PROVIDER_LOGO_MAP = {
+    'mistral': 'assets/logos/mistral.png',
+    'qwen': 'assets/logos/qwen.png',
+    'glm': 'assets/logos/zhipu.png',
+    'minimax': 'assets/logos/minimax.png',
+    'deepseek': 'assets/logos/deepseek.png',
+    'openai': 'assets/logos/openai.png',
+    'gemini': 'assets/logos/gemini.png',
+};
+
 export class MessageComponent {
-    constructor(messagesContainer) {
+    constructor(messagesContainer, getModelInfo = null) {
         this.container = messagesContainer;
+        this.getModelInfo = getModelInfo;
         this.renderer = new MarkdownRenderer();
         this.smartScroller = new SmartScroller(this.container);
         // Store raw content for assistant messages to support re-rendering
@@ -21,6 +32,8 @@ export class MessageComponent {
         this.messageCitations = new Map();
         // Store coworking transcript state for re-rendering during streaming
         this.coworkingTranscripts = new Map();
+        // Store metrics per message for re-rendering support
+        this.messageMetrics = new Map();
         // Current conversation ID for debate message persistence
         this.conversationId = null;
     }
@@ -129,6 +142,157 @@ export class MessageComponent {
             }
         });
         return btn;
+    }
+
+    /**
+     * Add a metrics bar to an assistant message
+     * @param {HTMLElement} messageEl - Message element
+     * @param {Object} metrics - Metrics object {ttfb_ms, tps, total_tokens, input_tokens, output_tokens, model_id}
+     */
+    addMetricsBar(messageEl, metrics) {
+        if (!metrics || !messageEl) return;
+
+        const msgId = messageEl.dataset.messageId;
+        if (msgId) {
+            this.messageMetrics.set(msgId, metrics);
+        }
+
+        // Remove existing metrics bar
+        const existing = messageEl.querySelector('.message-metrics');
+        if (existing) existing.remove();
+
+        const bar = document.createElement('div');
+        bar.className = 'message-metrics';
+
+        // Build model info element (single model or debate multi-model)
+        let modelInfoSpan = null;
+        if (metrics.model_ids && Array.isArray(metrics.model_ids) && this.getModelInfo) {
+            // Debate mode: show logos only, no names
+            modelInfoSpan = document.createElement('span');
+            modelInfoSpan.className = 'metric model-info debate-models';
+            metrics.model_ids.forEach(modelId => {
+                const info = this.getModelInfo(modelId);
+                if (info) {
+                    const logoPath = PROVIDER_LOGO_MAP[info.provider];
+                    if (logoPath) {
+                        const img = document.createElement('img');
+                        img.className = 'provider-logo';
+                        img.src = logoPath;
+                        img.alt = info.model_name || '';
+                        img.title = info.model_name || '';
+                        modelInfoSpan.appendChild(img);
+                    }
+                }
+            });
+        } else if (metrics.model_id && this.getModelInfo) {
+            const modelInfo = this.getModelInfo(metrics.model_id);
+            if (modelInfo) {
+                modelInfoSpan = document.createElement('span');
+                modelInfoSpan.className = 'metric model-info';
+                const logoPath = PROVIDER_LOGO_MAP[modelInfo.provider];
+                if (logoPath) {
+                    const img = document.createElement('img');
+                    img.className = 'provider-logo';
+                    img.src = logoPath;
+                    img.alt = '';
+                    modelInfoSpan.appendChild(img);
+                }
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'model-name';
+                nameSpan.textContent = modelInfo.model_name;
+                modelInfoSpan.appendChild(nameSpan);
+            }
+        }
+
+        // Format TTFB: ms or s
+        let ttfbText = null;
+        if (metrics.ttfb_ms != null) {
+            if (metrics.ttfb_ms >= 1000) {
+                const s = (metrics.ttfb_ms / 1000).toFixed(2).replace(/\.00$/, '');
+                ttfbText = `TTFB ${s} s`;
+            } else {
+                ttfbText = `TTFB ${Math.round(metrics.ttfb_ms)} ms`;
+            }
+        }
+
+        // Format tokens: no unit, K, or M
+        let tokensText = null;
+        let totalTokens = metrics.total_tokens;
+        if (totalTokens == null && metrics.input_tokens != null && metrics.output_tokens != null) {
+            totalTokens = metrics.input_tokens + metrics.output_tokens;
+        }
+        if (totalTokens != null) {
+            let value, unit;
+            if (totalTokens >= 1000000) {
+                value = (totalTokens / 1000000).toFixed(1);
+                unit = 'M';
+            } else if (totalTokens >= 1000) {
+                value = (totalTokens / 1000).toFixed(1);
+                unit = 'K';
+            } else {
+                value = String(totalTokens);
+                unit = '';
+            }
+            value = value.replace(/\.0$/, '');
+            tokensText = `Tokens ${value}${unit}`;
+        }
+
+        // Format TPS
+        let tpsText = null;
+        if (metrics.tps != null) {
+            const tps = metrics.tps.toFixed(1).replace(/\.0$/, '');
+            tpsText = `${tps} tok/s`;
+        }
+
+        const parts = [ttfbText, tokensText, tpsText].filter(Boolean);
+        if (!modelInfoSpan && parts.length === 0) return;
+
+        // Left side: model info (logo + name)
+        if (modelInfoSpan) {
+            const left = document.createElement('div');
+            left.className = 'metric-left';
+            left.appendChild(modelInfoSpan);
+            bar.appendChild(left);
+        }
+
+        // Right side: metrics (TTFB, tokens, TPS)
+        if (parts.length > 0) {
+            const right = document.createElement('div');
+            right.className = 'metric-right';
+            parts.forEach((part, i) => {
+                const span = document.createElement('span');
+                span.className = 'metric';
+                span.textContent = part;
+                right.appendChild(span);
+                if (i < parts.length - 1) {
+                    const sep = document.createElement('span');
+                    sep.className = 'metric-separator';
+                    sep.textContent = ' | ';
+                    right.appendChild(sep);
+                }
+            });
+            bar.appendChild(right);
+        }
+
+        // Add token breakdown tooltip on the tokens metric
+        if (tokensText && (metrics.input_tokens != null || metrics.output_tokens != null)) {
+            const right = bar.querySelector('.metric-right');
+            if (right) {
+                let tokenIdx = ttfbText ? 1 : 0;
+                const tokenSpan = right.children[tokenIdx * 2];
+                if (tokenSpan) {
+                    const up = metrics.input_tokens != null ? `↑ ${metrics.input_tokens.toLocaleString()}` : '';
+                    const down = metrics.output_tokens != null ? `↓ ${metrics.output_tokens.toLocaleString()}` : '';
+                    const tooltip = [up, down].filter(Boolean).join(' | ');
+                    if (tooltip) {
+                        tokenSpan.setAttribute('data-tooltip', tooltip);
+                        tokenSpan.classList.add('metric-tooltip');
+                    }
+                }
+            }
+        }
+
+        messageEl.appendChild(bar);
     }
 
     /**
@@ -581,6 +745,11 @@ export class MessageComponent {
                 if (this.messageCitations.has(msgId)) {
                     this.applyCitations(messageEl, this.messageCitations.get(msgId));
                 }
+
+                // Re-attach metrics bar if this message had metrics
+                if (this.messageMetrics.has(msgId)) {
+                    this.addMetricsBar(messageEl, this.messageMetrics.get(msgId));
+                }
             }
         });
     }
@@ -782,19 +951,20 @@ export class MessageComponent {
             if (msg.role === 'user') {
                 this.addUserMessage(msg.content);
             } else if (msg.role === 'assistant') {
+                let messageEl = null;
                 // Check if this is an image response stored as JSON
                 if (msg.message_type === 'image_response' || this._isImageResponseJson(msg.content)) {
                     try {
                         const parsed = JSON.parse(msg.content);
-                        this.addImageMessage(parsed.text || '', parsed.images || []);
+                        messageEl = this.addImageMessage(parsed.text || '', parsed.images || []);
                     } catch (e) {
-                        this.addAssistantMessage(msg.content);
+                        messageEl = this.addAssistantMessage(msg.content);
                     }
                 // Check if this is a debate message
                 } else {
                     const debateMetadata = this.getDebateMetadata(msg.content);
                     if (debateMetadata) {
-                        this.addDebateMessage(
+                        messageEl = this.addDebateMessage(
                             msg.content,
                             debateMetadata.debateId,
                             debateMetadata.iteration,
@@ -802,13 +972,21 @@ export class MessageComponent {
                         );
                     } else if (this.hasThinkingContent(msg.content)) {
                         // Message contains <think> blocks - render with collapsible thinking
-                        const messageEl = this.addMessage('', 'assistant');
+                        messageEl = this.addMessage('', 'assistant');
                         const msgId = Date.now().toString() + Math.random().toString();
                         messageEl.dataset.messageId = msgId;
                         this.updateMessageWithThinking(messageEl, msg.content, isMarkdown);
                     } else {
-                        this.addAssistantMessage(msg.content);
+                        messageEl = this.addAssistantMessage(msg.content);
                     }
+                }
+                // Restore metrics bar if metadata exists
+                if (messageEl && msg.metadata && msg.metadata.metrics) {
+                    const metrics = { ...msg.metadata.metrics };
+                    if (!metrics.model_id && msg.model) {
+                        metrics.model_id = msg.model;
+                    }
+                    this.addMetricsBar(messageEl, metrics);
                 }
             } else if (msg.role === 'system') {
                 this.addSystemMessage(msg.content);

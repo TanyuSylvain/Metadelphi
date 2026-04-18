@@ -37,7 +37,7 @@ class OpenAIProvider(BaseLLMProvider):
         """OpenAI supports streaming."""
         return True
 
-    def initialize(self, model_id: str, api_key: str, temperature: float = 0.7, thinking: bool = False, **kwargs):
+    def initialize(self, model_id: str, api_key: str, temperature: float = 0.7, thinking: bool = False, max_tokens: int = 32000, **kwargs):
         """
         Initialize OpenAI LLM client.
 
@@ -46,6 +46,7 @@ class OpenAIProvider(BaseLLMProvider):
             api_key: OpenAI API key
             temperature: Sampling temperature (default: 0.7)
             thinking: Not supported for this model
+            max_tokens: Maximum output tokens (default: 32000)
             **kwargs: Additional configuration (e.g., base_url)
 
         Returns:
@@ -61,6 +62,7 @@ class OpenAIProvider(BaseLLMProvider):
             api_key=validated_key,
             base_url=base_url,
             temperature=temperature,
+            max_tokens=max_tokens,
             streaming=True,
             default_headers={"User-Agent": self.get_user_agent()},
             extra_body={"reasoning": {"enabled": thinking}}

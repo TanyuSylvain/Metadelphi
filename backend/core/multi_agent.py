@@ -12,6 +12,7 @@ Uses LangGraph for workflow orchestration with sliding window memory management.
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Optional, AsyncGenerator, Literal
 
@@ -20,6 +21,7 @@ from langgraph.graph import StateGraph, END
 from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor, json_converter
+from backend.utils.metrics import DebateMetricsAccumulator
 from backend.core.multi_agent_state import MultiAgentState, create_initial_state
 from backend.core.prompts import (
     MODERATOR_INIT_PROMPT,
@@ -226,7 +228,12 @@ class MultiAgentDebateWorkflow:
                 }
             }
 
-    async def _moderator_init_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+    async def _moderator_init_step(
+        self,
+        state: MultiAgentState,
+        run_context: Optional[RunContext] = None,
+        accumulator: Optional[DebateMetricsAccumulator] = None,
+    ) -> dict:
         """Async moderator init used by the streaming path for cancellation support."""
         if run_context:
             run_context.raise_if_cancelled()
@@ -240,7 +247,15 @@ class MultiAgentDebateWorkflow:
             conversation_context=conversation_context
         )
 
-        response = await self.moderator_llm.ainvoke([{"role": "user", "content": prompt}])
+        start_time = time.time()
+        response = await self.moderator_llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            stream_options={"include_usage": True}
+        )
+        end_time = time.time()
+        if accumulator:
+            accumulator.add_step(response, start_time, end_time)
+
         if run_context:
             run_context.raise_if_cancelled()
         text_content = TextProcessor.extract_text_content(response.content)
@@ -353,7 +368,12 @@ class MultiAgentDebateWorkflow:
 
         return {"current_answer": result}
 
-    async def _expert_generate_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+    async def _expert_generate_step(
+        self,
+        state: MultiAgentState,
+        run_context: Optional[RunContext] = None,
+        accumulator: Optional[DebateMetricsAccumulator] = None,
+    ) -> dict:
         """Async expert step used by the streaming path for cancellation support."""
         if run_context:
             run_context.raise_if_cancelled()
@@ -397,7 +417,15 @@ class MultiAgentDebateWorkflow:
             conversation_context=conversation_context
         )
 
-        response = await self.expert_llm.ainvoke([{"role": "user", "content": prompt}])
+        start_time = time.time()
+        response = await self.expert_llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            stream_options={"include_usage": True}
+        )
+        end_time = time.time()
+        if accumulator:
+            accumulator.add_step(response, start_time, end_time)
+
         if run_context:
             run_context.raise_if_cancelled()
         text_content = TextProcessor.extract_text_content(response.content)
@@ -448,7 +476,12 @@ class MultiAgentDebateWorkflow:
 
         return {"current_review": result}
 
-    async def _critic_review_step(self, state: MultiAgentState, run_context: Optional[RunContext] = None) -> dict:
+    async def _critic_review_step(
+        self,
+        state: MultiAgentState,
+        run_context: Optional[RunContext] = None,
+        accumulator: Optional[DebateMetricsAccumulator] = None,
+    ) -> dict:
         """Async critic step used by the streaming path for cancellation support."""
         if run_context:
             run_context.raise_if_cancelled()
@@ -459,7 +492,15 @@ class MultiAgentDebateWorkflow:
             score_threshold=self.score_threshold
         )
 
-        response = await self.critic_llm.ainvoke([{"role": "user", "content": prompt}])
+        start_time = time.time()
+        response = await self.critic_llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            stream_options={"include_usage": True}
+        )
+        end_time = time.time()
+        if accumulator:
+            accumulator.add_step(response, start_time, end_time)
+
         if run_context:
             run_context.raise_if_cancelled()
         text_content = TextProcessor.extract_text_content(response.content)
@@ -593,7 +634,8 @@ class MultiAgentDebateWorkflow:
     async def _moderator_synthesize_step(
         self,
         state: MultiAgentState,
-        run_context: Optional[RunContext] = None
+        run_context: Optional[RunContext] = None,
+        accumulator: Optional[DebateMetricsAccumulator] = None,
     ) -> dict:
         """Async moderator synthesis step used by the streaming path."""
         if run_context:
@@ -640,7 +682,15 @@ class MultiAgentDebateWorkflow:
                 score_threshold=self.score_threshold
             )
 
-        response = await self.moderator_llm.ainvoke([{"role": "user", "content": prompt}])
+        start_time = time.time()
+        response = await self.moderator_llm.ainvoke(
+            [{"role": "user", "content": prompt}],
+            stream_options={"include_usage": True}
+        )
+        end_time = time.time()
+        if accumulator:
+            accumulator.add_step(response, start_time, end_time)
+
         if run_context:
             run_context.raise_if_cancelled()
         text_content = TextProcessor.extract_text_content(response.content)
@@ -878,7 +928,10 @@ class MultiAgentDebateWorkflow:
             async with use_run_context(run_context):
                 if run_context:
                     run_context.raise_if_cancelled()
-            # Yield initial phase
+                # Metrics accumulator for the entire debate session
+                accumulator = DebateMetricsAccumulator()
+
+                # Yield initial phase
                 yield {
                     "type": "phase_start",
                     "phase": "moderator_init",
@@ -887,7 +940,7 @@ class MultiAgentDebateWorkflow:
                 }
                 current_state = initial_state
 
-                result = await self._moderator_init_step(current_state, run_context=run_context)
+                result = await self._moderator_init_step(current_state, run_context=run_context, accumulator=accumulator)
                 current_state = {**current_state, **result}
 
                 if "moderator_init_analysis" in current_state:
@@ -907,12 +960,15 @@ class MultiAgentDebateWorkflow:
 
                 if current_state.get("status") == "direct_answer":
                     converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
+                    metrics = accumulator.get_totals(model_id=self.expert_model).to_dict()
+                    metrics["model_ids"] = [self.moderator_model, self.expert_model, self.critic_model]
                     yield {
                         "type": "done",
                         "final_answer": converted_answer,
                         "was_direct_answer": True,
                         "termination_reason": "simple_question",
-                        "total_iterations": 0
+                        "total_iterations": 0,
+                        "metrics": metrics
                     }
                     if conversation_id:
                         await self.storage.add_message(
@@ -920,7 +976,8 @@ class MultiAgentDebateWorkflow:
                             role="assistant",
                             content=converted_answer,
                             model=self.moderator_model,
-                            message_type="final_answer"
+                            message_type="final_answer",
+                            metadata={"metrics": metrics}
                         )
                         await self._save_debate_state(conversation_id, current_state)
                     return
@@ -937,7 +994,7 @@ class MultiAgentDebateWorkflow:
                         "message": f"Expert generating answer (iteration {iteration})..."
                     }
 
-                    result = await self._expert_generate_step(current_state, run_context=run_context)
+                    result = await self._expert_generate_step(current_state, run_context=run_context, accumulator=accumulator)
                     current_state = {**current_state, **result}
 
                     yield {
@@ -953,7 +1010,7 @@ class MultiAgentDebateWorkflow:
                         "message": f"Critic reviewing answer (iteration {iteration})..."
                     }
 
-                    result = await self._critic_review_step(current_state, run_context=run_context)
+                    result = await self._critic_review_step(current_state, run_context=run_context, accumulator=accumulator)
                     current_state = {**current_state, **result}
 
                     yield {
@@ -969,7 +1026,7 @@ class MultiAgentDebateWorkflow:
                         "message": f"Moderator synthesizing results (iteration {iteration})..."
                     }
 
-                    result = await self._moderator_synthesize_step(current_state, run_context=run_context)
+                    result = await self._moderator_synthesize_step(current_state, run_context=run_context, accumulator=accumulator)
                     current_state = {**current_state, **result}
 
                     if "moderator_synthesize_analysis" in current_state:
@@ -997,12 +1054,15 @@ class MultiAgentDebateWorkflow:
                     }
 
                 converted_answer = TextProcessor.convert_math_delimiters(current_state["final_answer"])
+                metrics = accumulator.get_totals(model_id=self.expert_model).to_dict()
+                metrics["model_ids"] = [self.moderator_model, self.expert_model, self.critic_model]
                 yield {
                     "type": "done",
                     "final_answer": converted_answer,
                     "was_direct_answer": False,
                     "termination_reason": current_state.get("termination_reason"),
-                    "total_iterations": current_state.get("iteration", 1)
+                    "total_iterations": current_state.get("iteration", 1),
+                    "metrics": metrics
                 }
 
                 if conversation_id:
@@ -1011,7 +1071,8 @@ class MultiAgentDebateWorkflow:
                         role="assistant",
                         content=converted_answer,
                         model=self.expert_model,
-                        message_type="final_answer"
+                        message_type="final_answer",
+                        metadata={"metrics": metrics}
                     )
                     await self._save_debate_state(conversation_id, current_state)
 
@@ -1020,10 +1081,11 @@ class MultiAgentDebateWorkflow:
         except RunCancelledError:
             raise
         except Exception as e:
-            logger.error(f"Multi-agent workflow error: {e}")
+            logger.error(f"Multi-agent workflow error: {e}", exc_info=True)
+            error_msg = str(e) or repr(e) or "An unexpected error occurred during the debate workflow."
             yield {
                 "type": "error",
-                "error": str(e)
+                "error": error_msg
             }
 
     async def invoke(

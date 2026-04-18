@@ -31,6 +31,7 @@ from backend.utils.parallel_tools import (
 from backend.tools.workspace_tools import create_workspace_tools
 from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
+from backend.utils.metrics import MetricsCollector
 from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
@@ -426,6 +427,7 @@ class CoworkingAgent:
                 if run_context:
                     run_context.raise_if_cancelled()
             # === Planning + ReAct Loop ===
+                metrics = None
                 while iteration < max_iterations:
                     if run_context:
                         run_context.raise_if_cancelled()
@@ -437,26 +439,32 @@ class CoworkingAgent:
                     buffered_text = ""
                     saw_tool_call_chunks = False
                     round_started = False
+                    # Create a fresh collector each iteration; only the final
+                    # non-tool iteration's metrics will survive and be reported.
+                    iteration_metrics = MetricsCollector()
+                    iteration_metrics.start()
 
-                    async for chunk in llm_with_tools.astream(chat_messages):
+                    async for chunk in llm_with_tools.astream(chat_messages, stream_options={"include_usage": True}):
                         if run_context:
                             run_context.raise_if_cancelled()
                         # Accumulate content
+                        text = ""
                         if hasattr(chunk, 'content') and chunk.content:
                             text = TextProcessor.extract_text_content(chunk.content)
-                            if text:
-                                full_content += text
-                                if saw_tool_call_chunks:
-                                    if not round_started:
-                                        yield {"type": "round_start", "round": iteration}
-                                        round_started = True
-                                    yield {
-                                        "type": "reasoning_chunk",
-                                        "round": iteration,
-                                        "content": text,
-                                    }
-                                else:
-                                    buffered_text += text
+                        iteration_metrics.on_chunk(text, chunk)
+                        if text:
+                            full_content += text
+                            if saw_tool_call_chunks:
+                                if not round_started:
+                                    yield {"type": "round_start", "round": iteration}
+                                    round_started = True
+                                yield {
+                                    "type": "reasoning_chunk",
+                                    "round": iteration,
+                                    "content": text,
+                                }
+                            else:
+                                buffered_text += text
 
                         # Accumulate tool calls from streaming chunks
                         if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
@@ -495,6 +503,8 @@ class CoworkingAgent:
                                     tool_calls[tc_idx]["args"] += tc_chunk["args"]
 
                     if not tool_calls:
+                        # Final answer iteration — keep these metrics
+                        metrics = iteration_metrics
                         if _looks_like_plan_only_response(full_content) and iteration < max_iterations:
                             if not plan_emitted and full_content.strip():
                                 yield {
@@ -654,13 +664,15 @@ class CoworkingAgent:
                     }
 
                 final_response = TextProcessor.convert_math_delimiters(final_response)
+                metrics_dict = metrics.finish(model_id=self.model_id).to_dict() if metrics else None
 
                 if final_response:
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=final_response,
-                        model=self.model_id
+                        model=self.model_id,
+                        metadata={"metrics": metrics_dict} if metrics_dict else {}
                     )
                     assistant_saved = True
 
@@ -688,6 +700,7 @@ class CoworkingAgent:
                     "final_answer": final_response,
                     "generated_files": final_generated_files,
                     "deleted_files": final_file_state["deleted_files"],
+                    "metrics": metrics_dict,
                 }
         except asyncio.CancelledError:
             raise

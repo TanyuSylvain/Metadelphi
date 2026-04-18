@@ -53,8 +53,12 @@ export class ChatApp {
         }
 
         // Initialize components
-        this.messageComponent = new MessageComponent(this.messagesContainer);
         this.modelSelector = new ModelSelector(this.modelSelectElement, this.apiClient);
+        const getModelInfo = (modelId) => {
+            const models = this.modelSelector ? this.modelSelector.getAllModels() : [];
+            return models.find(m => m.model_id === modelId) || null;
+        };
+        this.messageComponent = new MessageComponent(this.messagesContainer, getModelInfo);
         this.sidebar = new Sidebar(
             this.sidebarElement,
             this.apiClient,
@@ -1037,6 +1041,33 @@ export class ChatApp {
                 }
             }
 
+            // Extract and display metrics from the stream
+            const metricsMatch = fullResponse.match(/<!--METRICS_JSON(.+?)METRICS_JSON-->/s);
+            if (metricsMatch) {
+                try {
+                    const metrics = JSON.parse(metricsMatch[1]);
+                    // Strip the metrics metadata from the stored response
+                    fullResponse = fullResponse.replace(/\n?\n?<!--METRICS_JSON.+?METRICS_JSON-->/s, '');
+                    const msgId = typingIndicator.dataset.messageId;
+                    if (msgId) {
+                        this.messageComponent.messageContents.set(msgId, fullResponse);
+                    }
+                    // Re-render without the metadata
+                    if (fullResponse.includes('<think')) {
+                        this.messageComponent.updateMessageWithThinking(
+                            typingIndicator, fullResponse, this.isMarkdownEnabled
+                        );
+                    } else {
+                        this.messageComponent.updateMessage(
+                            typingIndicator, fullResponse, this.isMarkdownEnabled
+                        );
+                    }
+                    this.messageComponent.addMetricsBar(typingIndicator, metrics);
+                } catch (e) {
+                    console.warn('Failed to parse metrics metadata:', e);
+                }
+            }
+
             // Refresh the sidebar to update the conversation title and timestamp
             await this.sidebar.loadConversations();
             this.sidebar.setCurrentConversation(this.conversationId);
@@ -1241,20 +1272,25 @@ export class ChatApp {
                         console.log(`Iteration ${iteration} complete: ${status}, score: ${score}`);
                         this.currentDebateIteration = iteration;
                     },
-                    onDone: (finalAnswer, wasDirectAnswer, terminationReason, totalIterations) => {
-                        console.log('Debate complete:', { finalAnswer, wasDirectAnswer, terminationReason, totalIterations });
+                    onDone: (finalAnswer, wasDirectAnswer, terminationReason, totalIterations, metrics) => {
+                        console.log('Debate complete:', { finalAnswer, wasDirectAnswer, terminationReason, totalIterations, metrics });
 
                         // Remove typing indicator
                         this.messageComponent.removeTypingIndicator(typingIndicator);
 
                         // Add debate answer message with source badge
                         const iteration = wasDirectAnswer ? 0 : (totalIterations || this.currentDebateIteration);
-                        this.messageComponent.addDebateMessage(
+                        const debateMsg = this.messageComponent.addDebateMessage(
                             finalAnswer,
                             this.currentDebateId,
                             iteration,
                             this.isMarkdownEnabled
                         );
+
+                        // Attach metrics bar to the debate message
+                        if (metrics && debateMsg) {
+                            this.messageComponent.addMetricsBar(debateMsg, metrics);
+                        }
 
                         // Update debate viewer with final answer
                         if (this.debateViewer && !wasDirectAnswer) {
@@ -1511,7 +1547,7 @@ export class ChatApp {
                         transcriptState.citations = citations || [];
                         renderTranscript();
                     },
-                    onDone: (finalAnswer, generatedFiles, deletedFiles) => {
+                    onDone: (finalAnswer, generatedFiles, deletedFiles, metrics) => {
                         if (this.toolExecutionViewer) {
                             this.toolExecutionViewer.setFileState(generatedFiles, deletedFiles);
                         }
@@ -1520,6 +1556,9 @@ export class ChatApp {
                             transcriptState.finalAnswer = finalAnswer;
                         }
                         renderTranscript();
+                        if (metrics && transcriptMessage) {
+                            this.messageComponent.addMetricsBar(transcriptMessage, metrics);
+                        }
                     },
                     onCancelled: (messageText) => {
                         this.showCancellationMessage(messageText);

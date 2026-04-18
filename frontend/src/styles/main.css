@@ -2573,3 +2573,90 @@ body {
 .image-download-btn:hover {
     background: #357abd;
 }
+
+/* ========================================
+   Message Metrics Bar
+   ======================================== */
+
+.message-metrics {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 11px;
+    color: #8b949e;
+    user-select: none;
+}
+
+.metric-left {
+    display: flex;
+    align-items: center;
+}
+
+.metric-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: default;
+}
+
+.metric.model-info {
+    gap: 5px;
+    font-weight: 500;
+    color: #656d76;
+}
+
+.provider-logo {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    border-radius: 2px;
+}
+
+.model-name {
+    white-space: nowrap;
+}
+
+.metric.debate-models {
+    gap: 4px;
+}
+
+.metric-separator {
+    opacity: 0.5;
+}
+
+.metric-tooltip {
+    position: relative;
+}
+
+.metric-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: #1a1a2e;
+    color: white;
+    font-size: 11px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    margin-bottom: 4px;
+    z-index: 10;
+}
+
+.metric-tooltip:hover::after {
+    opacity: 1;
+}

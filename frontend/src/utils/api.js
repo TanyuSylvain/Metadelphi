@@ -550,7 +550,7 @@ export class APIClient {
                 break;
             case 'done':
                 if (callbacks.onDone) {
-                    callbacks.onDone(event.final_answer, event.was_direct_answer, event.termination_reason, event.total_iterations);
+                    callbacks.onDone(event.final_answer, event.was_direct_answer, event.termination_reason, event.total_iterations, event.metrics);
                 }
                 if (callbacks.onPhaseChange) {
                     callbacks.onPhaseChange('done', 0);
@@ -561,11 +561,13 @@ export class APIClient {
                     callbacks.onCancelled(event.message || 'Current task was cancelled.');
                 }
                 break;
-            case 'error':
+            case 'error': {
+                const message = event.error || 'An unexpected error occurred.';
                 if (callbacks.onError) {
-                    callbacks.onError(event.error);
+                    callbacks.onError(message);
                 }
                 break;
+            }
             default:
                 console.warn('Unknown multi-agent event type:', event.type);
         }
@@ -729,7 +731,8 @@ export class APIClient {
                     callbacks.onDone(
                         event.final_answer,
                         event.generated_files || [],
-                        event.deleted_files || []
+                        event.deleted_files || [],
+                        event.metrics
                     );
                 }
                 break;

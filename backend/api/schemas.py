@@ -107,12 +107,27 @@ class MessageInfo(BaseModel):
     content: str = Field(..., description="Message content")
     timestamp: str = Field(..., description="Message timestamp")
     model: Optional[str] = Field(None, description="Model used (for assistant messages)")
+    metadata: Optional[Dict] = Field(default=None, description="Message metadata including metrics")
 
 
 class ConversationHistoryResponse(BaseModel):
     """Response model for conversation history."""
     conversation_id: str = Field(..., description="Conversation ID")
     messages: List[MessageInfo] = Field(..., description="List of messages")
+
+
+# =============================================================================
+# Metrics Schema
+# =============================================================================
+
+class StreamMetrics(BaseModel):
+    """Performance metrics for an LLM response."""
+    ttfb_ms: Optional[float] = Field(None, description="Time to First Byte in milliseconds")
+    tps: Optional[float] = Field(None, description="Tokens Per Second")
+    total_tokens: Optional[int] = Field(None, description="Total tokens (input + output)")
+    input_tokens: Optional[int] = Field(None, description="Input/prompt tokens")
+    output_tokens: Optional[int] = Field(None, description="Output/completion tokens")
+    model_id: Optional[str] = Field(None, description="Model ID used for the response")
 
 
 # =============================================================================

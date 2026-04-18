@@ -74,6 +74,7 @@ class ProviderFactory:
             model_id=model_id,
             api_key=api_key,
             temperature=temperature,
+            max_tokens=32000,
             **kwargs
         )
 

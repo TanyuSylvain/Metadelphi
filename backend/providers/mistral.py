@@ -56,7 +56,7 @@ class MistralProvider(BaseLLMProvider):
         """Mistral supports streaming."""
         return True
 
-    def initialize(self, model_id: str, api_key: str, temperature: float = 0.7, thinking: bool = False, **kwargs):
+    def initialize(self, model_id: str, api_key: str, temperature: float = 0.7, thinking: bool = False, max_tokens: int = 32000, **kwargs):
         """
         Initialize Mistral LLM client.
 
@@ -65,6 +65,7 @@ class MistralProvider(BaseLLMProvider):
             api_key: Mistral API key
             temperature: Sampling temperature (default: 0.7)
             thinking: Not supported for Mistral models
+            max_tokens: Maximum output tokens (default: 32000)
             **kwargs: Additional configuration (unused)
 
         Returns:
@@ -80,5 +81,6 @@ class MistralProvider(BaseLLMProvider):
             model=validated_model,
             api_key=validated_key,
             temperature=temperature,
+            max_tokens=max_tokens,
             streaming=True
         )

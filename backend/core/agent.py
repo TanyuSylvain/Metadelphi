@@ -26,6 +26,7 @@ from backend.utils.parallel_tools import (
     ToolCallSpec,
     execute_tools_parallel,
 )
+from backend.utils.metrics import MetricsCollector, strip_metrics_metadata
 from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
@@ -157,9 +158,10 @@ class LangGraphAgent:
         # Choose path: with tools (ReAct loop) or without (simple streaming)
         if self.llm_with_tools and self.tools:
             full_response = ""
+            metrics = MetricsCollector()
             try:
                 async with use_run_context(run_context):
-                    async for chunk in self._stream_with_tools(messages, run_context=run_context):
+                    async for chunk in self._stream_with_tools(messages, run_context=run_context, metrics=metrics):
                         if run_context:
                             run_context.raise_if_cancelled()
                         full_response += chunk
@@ -167,36 +169,49 @@ class LangGraphAgent:
             finally:
                 if conversation_id and full_response:
                     clean_response = strip_citations_metadata(full_response)
+                    clean_response = strip_metrics_metadata(clean_response)
+                    converted_response = TextProcessor.convert_math_delimiters(clean_response)
+                    result = metrics.finish(model_id=self.model_id)
+                    await self.storage.add_message(
+                        conversation_id=conversation_id,
+                        role="assistant",
+                        content=converted_response,
+                        model=self.model_id,
+                        metadata={"metrics": result.to_dict()}
+                    )
+        else:
+            # Original simple streaming path
+            full_response = ""
+            metrics = MetricsCollector()
+            metrics.start()
+            result = None
+            try:
+                async with use_run_context(run_context):
+                    async for chunk in self.llm.astream(messages, stream_options={"include_usage": True}):
+                        if run_context:
+                            run_context.raise_if_cancelled()
+                        text_content = ""
+                        if hasattr(chunk, 'content'):
+                            content = chunk.content
+                            if content:
+                                text_content = TextProcessor.extract_text_content(content)
+                        metrics.on_chunk(text_content, chunk)
+                        if text_content:
+                            full_response += text_content
+                            yield text_content
+                result = metrics.finish(model_id=self.model_id)
+                json_str = json.dumps(result.to_dict(), ensure_ascii=False)
+                yield f"\n\n<!--METRICS_JSON{json_str}METRICS_JSON-->"
+            finally:
+                if conversation_id and full_response:
+                    clean_response = strip_metrics_metadata(full_response)
                     converted_response = TextProcessor.convert_math_delimiters(clean_response)
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=converted_response,
-                        model=self.model_id
-                    )
-        else:
-            # Original simple streaming path
-            full_response = ""
-            try:
-                async with use_run_context(run_context):
-                    async for chunk in self.llm.astream(messages):
-                        if run_context:
-                            run_context.raise_if_cancelled()
-                        if hasattr(chunk, 'content'):
-                            content = chunk.content
-                            if content:
-                                text_content = TextProcessor.extract_text_content(content)
-                                if text_content:
-                                    full_response += text_content
-                                    yield text_content
-            finally:
-                if conversation_id and full_response:
-                    converted_response = TextProcessor.convert_math_delimiters(full_response)
-                    await self.storage.add_message(
-                        conversation_id=conversation_id,
-                        role="assistant",
-                        content=converted_response,
-                        model=self.model_id
+                        model=self.model_id,
+                        metadata={"metrics": result.to_dict()} if result is not None else {}
                     )
 
     async def _stream_with_tools(
@@ -204,6 +219,7 @@ class LangGraphAgent:
         messages: list,
         max_iterations: int = 10,
         run_context: Optional[RunContext] = None,
+        metrics: Optional[MetricsCollector] = None,
     ):
         """
         ReAct loop: stream LLM with tools, execute tool calls, repeat.
@@ -211,6 +227,7 @@ class LangGraphAgent:
         Args:
             messages: Chat message list (mutated in-place)
             max_iterations: Safety limit for tool call rounds
+            metrics: Optional MetricsCollector to track timing and token usage
 
         Yields:
             str: Text chunks from the LLM
@@ -220,21 +237,27 @@ class LangGraphAgent:
         # Prepend citation instruction so the LLM knows to use [N] markers
         messages.insert(0, SystemMessage(content=CITATION_SYSTEM_INSTRUCTION))
 
+        if metrics:
+            metrics.start()
+
         for iteration in range(max_iterations):
             if run_context:
                 run_context.raise_if_cancelled()
             full_content = ""
             tool_calls = []
 
-            async for chunk in self.llm_with_tools.astream(messages):
+            async for chunk in self.llm_with_tools.astream(messages, stream_options={"include_usage": True}):
                 if run_context:
                     run_context.raise_if_cancelled()
                 # Accumulate text content
+                text = ""
                 if hasattr(chunk, 'content') and chunk.content:
                     text = TextProcessor.extract_text_content(chunk.content)
-                    if text:
-                        full_content += text
-                        yield text
+                if metrics:
+                    metrics.on_chunk(text, chunk)
+                if text:
+                    full_content += text
+                    yield text
 
                 # Accumulate tool call chunks
                 if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
@@ -256,6 +279,8 @@ class LangGraphAgent:
                     if run_context:
                         run_context.raise_if_cancelled()
                     yield format_citations_metadata(citations)
+                if metrics:
+                    yield metrics.to_delimited_json(model_id=self.model_id)
                 break
 
             # Parse tool calls
@@ -274,6 +299,8 @@ class LangGraphAgent:
 
             if not parsed_tool_calls:
                 messages.append(AIMessage(content=full_content))
+                if metrics:
+                    yield metrics.to_delimited_json(model_id=self.model_id)
                 break
 
             # Append AI message with tool calls

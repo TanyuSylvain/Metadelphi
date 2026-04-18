@@ -7,9 +7,12 @@ Moderator-Expert-Critic collaboration.
 
 import asyncio
 import json
+import logging
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
 
 from backend.api.schemas import (
     MultiAgentChatRequest,
@@ -290,9 +293,11 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
                 event_data = json.dumps({"type": "cancelled", "message": CANCELLATION_MESSAGE}, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
         except Exception as e:
+            logger.error("Multi-agent chat route error", exc_info=True)
+            error_msg = sanitize_error_message(e) or "An unexpected error occurred."
             error_event = json.dumps({
                 "type": "error",
-                "error": sanitize_error_message(e)
+                "error": error_msg
             }, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
         finally:
