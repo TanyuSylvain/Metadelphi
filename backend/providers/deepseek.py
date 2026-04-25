@@ -10,23 +10,22 @@ from .base import BaseLLMProvider
 class DeepSeekProvider(BaseLLMProvider):
     """DeepSeek provider using OpenAI-compatible API."""
 
-    # Models that support thinking (always on, cannot be disabled)
-
     def get_available_models(self) -> List[Dict[str, str]]:
         """Return available DeepSeek models."""
         return [
             {
-                "id": "deepseek-chat",
-                "name": "DeepSeek Chat (Latest)",
+                "id": "deepseek-v4-flash",
+                "name": "DeepSeek V4 Flash",
                 "description": "DeepSeek's conversational model",
-                "supports_thinking": False
+                "supports_thinking": True,
+                "thinking_locked": False  # Can enable/disable thinking
             },
             {
-                "id": "deepseek-reasoner",
-                "name": "DeepSeek Reasoner (Latest)",
+                "id": "deepseek-v4-pro",
+                "name": "DeepSeek V4 Pro",
                 "description": "Advanced reasoning model with chain-of-thought",
                 "supports_thinking": True,
-                "thinking_locked": True  # Cannot disable thinking
+                "thinking_locked": False  # Can enable/disable thinking
             },
         ]
 
@@ -43,10 +42,10 @@ class DeepSeekProvider(BaseLLMProvider):
         Initialize DeepSeek LLM client.
 
         Args:
-            model_id: DeepSeek model ID (e.g., 'deepseek-chat')
+            model_id: DeepSeek model ID (e.g., 'deepseek-v4-flash')
             api_key: DeepSeek API key
             temperature: Sampling temperature (default: 0.7)
-            thinking: Ignored for deepseek-reasoner (always thinks)
+            thinking: Whether to enable chain-of-thought reasoning
             max_tokens: Maximum output tokens (default: 32000)
             **kwargs: Additional configuration (e.g., base_url)
 
@@ -58,21 +57,18 @@ class DeepSeekProvider(BaseLLMProvider):
 
         base_url = kwargs.get("base_url", "https://api.deepseek.com")
 
-        # DeepSeek Reasoner doesn't support temperature parameter
-        if validated_model == "deepseek-reasoner":
-            return ChatOpenAI(
-                model=validated_model,
-                api_key=validated_key,
-                base_url=base_url,
-                max_tokens=max_tokens,
-                streaming=True
-            )
+        extra_body = {}
+        if thinking:
+            extra_body["reasoning_effort"] = "max"
         else:
-            return ChatOpenAI(
-                model=validated_model,
-                api_key=validated_key,
-                base_url=base_url,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                streaming=True
-            )
+            extra_body["thinking"] = {"type": "disabled"}
+
+        return ChatOpenAI(
+            model=validated_model,
+            api_key=validated_key,
+            base_url=base_url,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            streaming=True,
+            extra_body=extra_body
+        )
