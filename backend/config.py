@@ -87,6 +87,7 @@ class Settings(BaseSettings):
             "openai": self.openai_api_key,
             "gemini": self.gemini_api_key,
             "gemini_image": self.gemini_api_key,
+            "openai_image": self.openai_api_key,
         }
         return key_map.get(provider)
 
@@ -100,6 +101,7 @@ class Settings(BaseSettings):
             "openai": self.openai_base_url,
             "gemini": self.gemini_base_url,
             "gemini_image": self.gemini_base_url,
+            "openai_image": self.openai_base_url,
         }
         return url_map.get(provider)
 

@@ -15,7 +15,7 @@ from backend.core.run_manager import RunCancelledError
 from backend.tools.web_search import get_web_search_tools
 from backend.storage import get_storage
 from backend.config import settings
-from backend.providers.gemini_image import GeminiImageProvider
+from backend.providers.registry import ProviderRegistry
 from backend.utils.errors import sanitize_error_message
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -186,12 +186,15 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
     conversation_id = request.conversation_id or str(uuid.uuid4())
     model_id = request.model or "gemini-2.5-flash-image"
 
-    api_key = settings.get_api_key("gemini")
-    base_url = settings.get_base_url("gemini")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Gemini API key not configured")
+    try:
+        provider_name, provider = ProviderRegistry.find_provider_for_model(model_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown model: {model_id}")
 
-    provider = GeminiImageProvider()
+    api_key = settings.get_api_key(provider_name)
+    base_url = settings.get_base_url(provider_name)
+    if not api_key:
+        raise HTTPException(status_code=500, detail=f"API key not configured for {provider_name}")
 
     run_context = await run_manager.create_run(mode="image", conversation_id=conversation_id)
 
@@ -217,7 +220,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
 
             # Load history for multi-turn support
             history = await _storage.get_messages(conversation_id)
-            messages = GeminiImageProvider.build_messages(history, request.message)
+            messages = provider.build_messages(history, request.message)
 
             # Persist user message
             await _storage.add_message(

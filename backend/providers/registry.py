@@ -12,6 +12,7 @@ from .deepseek import DeepSeekProvider
 from .openai import OpenAIProvider
 from .gemini import GeminiProvider
 from .gemini_image import GeminiImageProvider
+from .openai_image import OpenAIImageProvider
 
 
 class ProviderRegistry:
@@ -27,6 +28,7 @@ class ProviderRegistry:
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
         "gemini_image": GeminiImageProvider,
+        "openai_image": OpenAIImageProvider,
     }
 
     @classmethod

@@ -34,7 +34,7 @@ if [ ! -f ".env" ]; then
     echo "Warning: .env file not found!"
     echo "Please configure your API keys by copying .env.template to .env"
     echo "Opening configuration wizard..."
-    $PYTHON_CMD installer/config_wizard.py
+    .venv/bin/python installer/config_wizard.py
 fi
 
 open_browser() {
@@ -45,7 +45,7 @@ open_browser() {
     fi
 }
 
-if $PYTHON_CMD service_runner.py status --quiet >/dev/null 2>&1; then
+if .venv/bin/python service_runner.py status --quiet >/dev/null 2>&1; then
     echo "Metadelphi is already running in the background."
     open_browser
     exit 0
@@ -65,7 +65,7 @@ echo "==================="
 
 # Start backend server
 echo "Starting backend server on port 8000..."
-$PYTHON_CMD -m backend.main &
+.venv/bin/python -m backend.main &
 BACKEND_PID=$!
 
 # Wait for backend to start
@@ -73,7 +73,7 @@ sleep 2
 
 # Start frontend server
 echo "Starting frontend server on port 8080..."
-$PYTHON_CMD -m http.server 8080 --directory frontend/src &
+.venv/bin/python -m http.server 8080 --directory frontend/src &
 FRONTEND_PID=$!
 
 # Wait a bit more for frontend to start
