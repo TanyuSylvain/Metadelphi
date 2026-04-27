@@ -63,12 +63,15 @@ class DeepSeekProvider(BaseLLMProvider):
         else:
             extra_body["thinking"] = {"type": "disabled"}
 
+        # Pass max_tokens via extra_body to avoid langchain-openai converting it
+        # to max_completion_tokens, which some OpenAI-compatible servers don't support.
+        extra_body["max_tokens"] = max_tokens
+
         return ChatOpenAI(
             model=validated_model,
             api_key=validated_key,
             base_url=base_url,
             temperature=temperature,
-            max_tokens=max_tokens,
             streaming=True,
             extra_body=extra_body
         )
