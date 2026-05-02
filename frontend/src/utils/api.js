@@ -936,4 +936,69 @@ export class APIClient {
             throw error;
         }
     }
+
+    // =========================================================================
+    // Provider Settings
+    // =========================================================================
+
+    /**
+     * Get provider settings (masked API keys, base URLs)
+     * @returns {Promise<Object>} Provider settings response
+     */
+    async getProviderSettings() {
+        try {
+            const response = await fetch(`${this.baseURL}/settings/providers`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch settings: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching provider settings:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update provider settings
+     * @param {Object} providers - Provider updates keyed by provider ID
+     * @returns {Promise<Object>} Update response
+     */
+    async updateProviderSettings(providers) {
+        try {
+            const response = await fetch(`${this.baseURL}/settings/providers`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ providers })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to update settings');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error updating provider settings:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Test a provider connection
+     * @param {string} providerId - Provider ID to test
+     * @returns {Promise<Object>} Test result with success, message, latency_ms
+     */
+    async testProvider(providerId) {
+        try {
+            const response = await fetch(`${this.baseURL}/settings/providers/${providerId}/test`, {
+                method: 'POST'
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Test request failed');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error testing provider:', error);
+            throw error;
+        }
+    }
 }

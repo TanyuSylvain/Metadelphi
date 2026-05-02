@@ -16,11 +16,15 @@ import { DebateViewer } from './components/DebateViewer.js';
 import ModeratorStatusIndicator from './components/ModeratorStatusIndicator.js';
 import { CoworkingConfig } from './components/CoworkingConfig.js';
 import { ToolExecutionViewer } from './components/ToolExecutionViewer.js';
+import { SettingsPanel } from './components/SettingsPanel.js';
 
 export class ChatApp {
     constructor() {
         // Initialize API client
         this.apiClient = new APIClient();
+
+        // Settings panel (lazy-initialized)
+        this.settingsPanel = null;
 
         // Get DOM elements
         this.messagesContainer = document.getElementById('messages');
@@ -313,6 +317,15 @@ export class ChatApp {
             sidebarToggleBtn.addEventListener('click', () => this.toggleSidebar());
         }
 
+        // Settings button
+        const settingsBtn = document.getElementById('settingsBtn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.openSettings());
+        }
+
+        // Listen for settings updates to refresh model list
+        window.addEventListener('settings-updated', () => this.refreshModelsAfterSettingsChange());
+
         // Load saved model selection
         const savedModel = getStorage('selectedModel');
         if (savedModel) {
@@ -437,6 +450,31 @@ export class ChatApp {
             toggleIcon.innerHTML = '&#x25C0;';  // Left arrow when expanded
         }
         setStorage('sidebarCollapsed', 'false');
+    }
+
+    /**
+     * Open the provider settings panel
+     */
+    openSettings() {
+        if (!this.settingsPanel) {
+            this.settingsPanel = new SettingsPanel(this.apiClient);
+        }
+        this.settingsPanel.open();
+    }
+
+    /**
+     * Refresh model list after settings change, filtering by configured providers
+     */
+    async refreshModelsAfterSettingsChange() {
+        try {
+            const data = await this.apiClient.getProviderSettings();
+            const configuredProviders = Object.entries(data.providers)
+                .filter(([_, cfg]) => cfg.api_key_set)
+                .map(([id, _]) => id.toLowerCase());
+            this.modelSelector.setConfiguredProviders(configuredProviders);
+        } catch (error) {
+            console.error('Error refreshing models after settings change:', error);
+        }
     }
 
     /**

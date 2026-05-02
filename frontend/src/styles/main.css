@@ -2657,6 +2657,298 @@ body {
     z-index: 10;
 }
 
+
+/* =========================================================================
+   Provider Settings Panel
+   ========================================================================= */
+
+/* Header settings button */
+.btn-header-settings {
+    width: 36px;
+    height: 36px;
+    border-radius: 0.5rem;
+    border: 1px solid #3a3a5e;
+    background: transparent;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.btn-header-settings:hover {
+    background: #2a2a4e;
+    border-color: #4a9eff;
+}
+
+/* Slide-out panel */
+.settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 420px;
+    height: 100vh;
+    background: #1a1a2e;
+    border-left: 1px solid #3a3a5e;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+}
+
+.settings-panel.open {
+    transform: translateX(0);
+}
+
+/* Panel header */
+.settings-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #3a3a5e;
+    flex-shrink: 0;
+}
+
+.settings-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #e0e0ff;
+}
+
+/* Panel body */
+.settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
+}
+
+.settings-loading {
+    text-align: center;
+    color: #8888aa;
+    padding: 2rem 0;
+}
+
+.settings-error {
+    text-align: center;
+    color: #ff6b6b;
+    padding: 2rem 0;
+}
+
+/* Separator between LLM providers and tool providers */
+.settings-separator {
+    margin: 1.25rem 0 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid #3a3a5e;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6a6a8e;
+}
+
+/* Provider section */
+.provider-section {
+    padding: 1rem 0;
+    border-bottom: 1px solid rgba(58, 58, 94, 0.5);
+}
+
+.provider-section:last-child {
+    border-bottom: none;
+}
+
+.provider-section-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #c0c0e0;
+    margin-bottom: 0.5rem;
+}
+
+.provider-link {
+    display: inline-block;
+    font-size: 0.78rem;
+    color: #4a9eff;
+    text-decoration: none;
+    margin-bottom: 0.75rem;
+}
+
+.provider-link:hover {
+    text-decoration: underline;
+}
+
+/* Provider fields */
+.provider-field {
+    margin-bottom: 0.75rem;
+}
+
+.provider-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: #8888aa;
+    margin-bottom: 0.3rem;
+}
+
+.field-row {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.field-row input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: #12122a;
+    border: 1px solid #3a3a5e;
+    border-radius: 0.4rem;
+    color: #e0e0ff;
+    font-size: 0.85rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.field-row input:focus {
+    border-color: #4a9eff;
+}
+
+.field-row input::placeholder {
+    color: #4a4a6e;
+}
+
+.btn-toggle-visibility {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #3a3a5e;
+    background: #2a2a4e;
+    border-radius: 0.4rem;
+    color: #8888aa;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.btn-toggle-visibility:hover {
+    background: #3a3a5e;
+    color: white;
+}
+
+/* Test connection */
+.provider-test-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.btn-test-connection {
+    padding: 0.35rem 0.85rem;
+    background: #2a2a4e;
+    border: 1px solid #3a3a5e;
+    border-radius: 0.4rem;
+    color: #c0c0e0;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.btn-test-connection:hover {
+    background: #3a3a5e;
+    border-color: #4a9eff;
+}
+
+.btn-test-connection:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.test-result {
+    font-size: 0.78rem;
+    color: #8888aa;
+}
+
+.test-result.success {
+    color: #4ade80;
+}
+
+.test-result.error {
+    color: #ff6b6b;
+}
+
+/* Panel footer */
+.settings-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #3a3a5e;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.btn-settings-cancel {
+    padding: 0.5rem 1.25rem;
+    background: transparent;
+    border: 1px solid #3a3a5e;
+    border-radius: 0.4rem;
+    color: #c0c0e0;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-settings-cancel:hover {
+    background: #2a2a4e;
+    border-color: #4a4a6e;
+}
+
+.btn-settings-save {
+    padding: 0.5rem 1.25rem;
+    background: #4a9eff;
+    border: 1px solid #4a9eff;
+    border-radius: 0.4rem;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-settings-save:hover {
+    background: #3a8eef;
+}
+
+/* Status messages */
+.settings-status {
+    font-size: 0.78rem;
+    min-height: 1.2em;
+}
+
+.settings-status.success {
+    color: #4ade80;
+}
+
+.settings-status.error {
+    color: #ff6b6b;
+}
+
+.settings-status.info {
+    color: #8888aa;
+}
+
 .metric-tooltip:hover::after {
     opacity: 1;
 }

@@ -330,3 +330,46 @@ class SwitchModeResponse(BaseModel):
                 "message": "Switched to debate mode. Previous conversation context prepared."
             }
         }
+
+
+# =============================================================================
+# Provider Settings Schemas
+# =============================================================================
+
+class ProviderConfig(BaseModel):
+    """Configuration for a single provider."""
+    api_key_masked: Optional[str] = Field(None, description="Masked API key for display")
+    api_key_set: bool = Field(False, description="Whether an API key is configured")
+    base_url: Optional[str] = Field(None, description="Current base URL")
+    has_base_url: bool = Field(False, description="Whether this provider supports a base URL")
+    display_name: str = Field(..., description="Human-readable provider name")
+    console_url: str = Field(..., description="URL to get an API key")
+    default_base_url: Optional[str] = Field(None, description="Default base URL")
+    test_model: Optional[str] = Field(None, description="Model ID used for connection testing")
+
+
+class ProviderSettingsResponse(BaseModel):
+    """Response for GET /settings/providers."""
+    providers: Dict[str, ProviderConfig] = Field(..., description="Provider configurations keyed by provider ID")
+
+
+class ProviderUpdateRequest(BaseModel):
+    """Request for PUT /settings/providers."""
+    providers: Dict[str, Dict[str, Optional[str]]] = Field(
+        ...,
+        description="Provider updates. Each key is a provider ID, value has optional 'api_key' and 'base_url'"
+    )
+
+
+class SettingsUpdateResponse(BaseModel):
+    """Response for PUT /settings/providers."""
+    success: bool = Field(..., description="Whether the update was successful")
+    message: str = Field(..., description="Status message")
+    providers_updated: List[str] = Field(default_factory=list, description="List of updated provider IDs")
+
+
+class ProviderTestResponse(BaseModel):
+    """Response for POST /settings/providers/{id}/test."""
+    success: bool = Field(..., description="Whether the test passed")
+    message: str = Field(..., description="Test result message")
+    latency_ms: Optional[float] = Field(None, description="Response latency in milliseconds")

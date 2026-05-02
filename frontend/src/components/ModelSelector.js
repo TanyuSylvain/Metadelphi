@@ -10,6 +10,7 @@ export class ModelSelector {
         this.models = [];
         this.onChangeCallback = null;
         this.imageMode = false; // when true, show only image models
+        this.configuredProviders = null; // null = show all, array = filter
     }
 
     /**
@@ -24,6 +25,20 @@ export class ModelSelector {
 
             // Fetch models from API
             this.models = await this.apiClient.getModels();
+
+            // Fetch provider settings to filter by configured providers
+            try {
+                const settingsData = await this.apiClient.getProviderSettings();
+                const configured = Object.entries(settingsData.providers)
+                    .filter(([_, cfg]) => cfg.api_key_set)
+                    .map(([id, _]) => id.toLowerCase());
+                if (configured.length > 0) {
+                    this.configuredProviders = configured;
+                }
+            } catch (e) {
+                // Settings endpoint may not be available yet; show all models
+                console.warn('Could not fetch provider settings for filtering:', e);
+            }
 
             // Populate dropdown
             this.populateModels();
@@ -94,6 +109,13 @@ export class ModelSelector {
 
         this.models
             .filter(model => !!model.is_image_model === this.imageMode)
+            .filter(model => {
+                // If configuredProviders is set, only show models from configured providers
+                if (this.configuredProviders && this.configuredProviders.length > 0) {
+                    return this.configuredProviders.includes(model.provider);
+                }
+                return true; // show all if no filter set
+            })
             .forEach(model => {
                 const providerName = model.provider_name;
                 if (!grouped[providerName]) {
@@ -163,6 +185,16 @@ export class ModelSelector {
      */
     getModelsByProvider(providerName) {
         return this.models.filter(m => m.provider_name === providerName);
+    }
+
+    /**
+     * Set which providers are configured (have API keys).
+     * Filters the model list to only show models from these providers.
+     * @param {Array<string>|null} providerIds - Array of provider IDs, or null to show all
+     */
+    setConfiguredProviders(providerIds) {
+        this.configuredProviders = providerIds;
+        this.populateModels();
     }
 
     /**
