@@ -2,6 +2,8 @@
 Settings routes for provider configuration management.
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from backend.config import settings
 from backend.api.schemas import (
@@ -51,5 +53,5 @@ async def test_provider_connection(provider_id: str):
     if provider_id.upper() not in settings.PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider_id}")
 
-    result = settings.test_provider(provider_id)
+    result = await asyncio.to_thread(settings.test_provider, provider_id)
     return ProviderTestResponse(**result)

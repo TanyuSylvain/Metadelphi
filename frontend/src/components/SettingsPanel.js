@@ -3,17 +3,6 @@
  * Slide-out panel for configuring provider API keys and base URLs
  */
 
-const PROVIDERS = [
-    { id: 'MISTRAL', name: 'Mistral AI', consoleUrl: 'https://console.mistral.ai/', hasBaseUrl: false, defaultBaseUrl: null },
-    { id: 'QWEN', name: 'Alibaba Qwen (DashScope)', consoleUrl: 'https://dashscope.aliyuncs.com/', hasBaseUrl: true, defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-    { id: 'GLM', name: 'Zhipu GLM', consoleUrl: 'https://open.bigmodel.cn/', hasBaseUrl: true, defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-    { id: 'MINIMAX', name: 'MiniMax', consoleUrl: 'https://www.minimaxi.com/', hasBaseUrl: true, defaultBaseUrl: 'https://api.minimaxi.com/v1' },
-    { id: 'DEEPSEEK', name: 'DeepSeek', consoleUrl: 'https://platform.deepseek.com/', hasBaseUrl: true, defaultBaseUrl: 'https://api.deepseek.com' },
-    { id: 'OPENAI', name: 'OpenAI / OpenAI-compatible', consoleUrl: 'https://platform.openai.com/api-keys', hasBaseUrl: true, defaultBaseUrl: 'https://api.openai.com/v1' },
-    { id: 'GEMINI', name: 'Google Gemini', consoleUrl: 'https://makersuite.google.com/app/apikey', hasBaseUrl: true, defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
-    { id: 'DASHSCOPE', name: 'Web Search (DashScope MCP)', consoleUrl: 'https://bailian.console.aliyun.com/', hasBaseUrl: false, defaultBaseUrl: null },
-];
-
 export class SettingsPanel {
     constructor(apiClient) {
         this.apiClient = apiClient;
@@ -99,18 +88,20 @@ export class SettingsPanel {
         const body = this.panel.querySelector('.settings-body');
         let html = '';
 
-        // LLM providers first, then DashScope
-        const llmProviders = PROVIDERS.filter(p => p.id !== 'DASHSCOPE');
-        const dashProvider = PROVIDERS.find(p => p.id === 'DASHSCOPE');
+        // Derive provider list from API response data, sorted by category
+        const providerIds = Object.keys(this.providerData);
+        const llmIds = providerIds.filter(id => this.providerData[id].category !== 'tool');
+        const toolIds = providerIds.filter(id => this.providerData[id].category === 'tool');
 
-        for (const provider of llmProviders) {
-            html += this._renderProviderSection(provider);
+        for (const id of llmIds) {
+            html += this._renderProviderSection(id);
         }
 
-        // Separator before DashScope
-        if (dashProvider) {
+        if (toolIds.length > 0) {
             html += `<div class="settings-separator">Tool API Keys</div>`;
-            html += this._renderProviderSection(dashProvider);
+            for (const id of toolIds) {
+                html += this._renderProviderSection(id);
+            }
         }
 
         body.innerHTML = html;
@@ -142,16 +133,15 @@ export class SettingsPanel {
         });
     }
 
-    _renderProviderSection(provider) {
-        const data = this.providerData[provider.id] || {};
+    _renderProviderSection(providerId) {
+        const data = this.providerData[providerId] || {};
         const maskedKey = data.api_key_masked || '';
         const baseUrl = data.base_url || '';
-        const keySet = data.api_key_set;
 
         let html = `
-            <div class="provider-section" data-provider="${provider.id}">
-                <div class="provider-section-title">${provider.name}</div>
-                <a class="provider-link" href="${provider.consoleUrl}" target="_blank" rel="noopener">Get your API key &nearr;</a>
+            <div class="provider-section" data-provider="${providerId}">
+                <div class="provider-section-title">${this._escapeAttr(data.display_name || providerId)}</div>
+                <a class="provider-link" href="${data.console_url}" target="_blank" rel="noopener">Get your API key &nearr;</a>
                 <div class="provider-field">
                     <label>API Key</label>
                     <div class="field-row">
@@ -165,14 +155,14 @@ export class SettingsPanel {
                     </div>
                 </div>`;
 
-        if (provider.hasBaseUrl) {
+        if (data.has_base_url) {
             html += `
                 <div class="provider-field">
                     <label>Base URL</label>
                     <div class="field-row">
                         <input type="text"
                                class="provider-url-input"
-                               placeholder="${this._escapeAttr(provider.defaultBaseUrl || '')}"
+                               placeholder="${this._escapeAttr(data.default_base_url || '')}"
                                value="${this._escapeAttr(baseUrl)}"
                                spellcheck="false">
                     </div>
@@ -181,10 +171,10 @@ export class SettingsPanel {
 
         html += `
                 <div class="provider-test-row">
-                    <button class="btn-test-connection" data-provider="${provider.id}">
+                    <button class="btn-test-connection" data-provider="${providerId}">
                         Test Connection
                     </button>
-                    <span class="test-result" data-provider="${provider.id}"></span>
+                    <span class="test-result" data-provider="${providerId}"></span>
                 </div>
             </div>`;
 
@@ -194,42 +184,22 @@ export class SettingsPanel {
     async _testProvider(btn) {
         const providerId = btn.dataset.provider;
         const resultSpan = this.panel.querySelector(`.test-result[data-provider="${providerId}"]`);
+        const data = this.providerData[providerId] || {};
 
-        // Save current values first
+        // Check for unsaved changes
         const section = this.panel.querySelector(`.provider-section[data-provider="${providerId}"]`);
         const keyInput = section.querySelector('.provider-key-input');
         const urlInput = section.querySelector('.provider-url-input');
-        const data = this.providerData[providerId] || {};
-
-        const updates = {};
         const keyVal = keyInput.value.trim();
         const urlVal = urlInput ? urlInput.value.trim() : null;
 
-        // Only send if changed from masked value
-        if (keyVal && keyVal !== data.api_key_masked) {
-            updates.api_key = keyVal;
-        }
-        if (urlVal !== null && urlVal !== data.base_url) {
-            updates.base_url = urlVal;
-        }
+        const keyChanged = keyVal && keyVal !== (data.api_key_masked || '');
+        const urlChanged = urlVal !== null && urlVal !== (data.base_url || '');
 
-        // Save the fields first
-        if (Object.keys(updates).length > 0) {
-            try {
-                await this.apiClient.updateProviderSettings({ [providerId]: updates });
-                // Update local data
-                if (updates.api_key) {
-                    data.api_key_set = true;
-                    data.api_key_masked = '********' + updates.api_key.slice(-4);
-                }
-                if (updates.base_url !== undefined) {
-                    data.base_url = updates.base_url;
-                }
-            } catch (e) {
-                resultSpan.className = 'test-result error';
-                resultSpan.textContent = `Save failed: ${e.message}`;
-                return;
-            }
+        if (keyChanged || urlChanged) {
+            resultSpan.className = 'test-result error';
+            resultSpan.textContent = 'Save changes first to test with new values';
+            return;
         }
 
         // Check if key is set
@@ -239,7 +209,7 @@ export class SettingsPanel {
             return;
         }
 
-        // Run test
+        // Run test against currently persisted values
         btn.disabled = true;
         btn.textContent = 'Testing...';
         resultSpan.className = 'test-result';
@@ -267,29 +237,28 @@ export class SettingsPanel {
         const statusEl = this.panel.querySelector('#settingsStatus');
         const updates = {};
 
-        for (const provider of PROVIDERS) {
-            const section = this.panel.querySelector(`.provider-section[data-provider="${provider.id}"]`);
+        for (const [providerId, data] of Object.entries(this.providerData)) {
+            const section = this.panel.querySelector(`.provider-section[data-provider="${providerId}"]`);
             if (!section) continue;
 
             const keyInput = section.querySelector('.provider-key-input');
             const urlInput = section.querySelector('.provider-url-input');
-            const data = this.providerData[provider.id] || {};
 
             const providerUpdates = {};
             const keyVal = keyInput.value.trim();
             const urlVal = urlInput ? urlInput.value.trim() : null;
 
             // Only include changed values
-            if (keyVal && keyVal !== data.api_key_masked) {
+            if (keyVal && keyVal !== (data.api_key_masked || '')) {
                 providerUpdates.api_key = keyVal;
             }
 
-            if (provider.hasBaseUrl && urlVal !== null && urlVal !== (data.base_url || '')) {
+            if (data.has_base_url && urlVal !== null && urlVal !== (data.base_url || '')) {
                 providerUpdates.base_url = urlVal;
             }
 
             if (Object.keys(providerUpdates).length > 0) {
-                updates[provider.id] = providerUpdates;
+                updates[providerId] = providerUpdates;
             }
         }
 

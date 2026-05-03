@@ -346,6 +346,7 @@ class ProviderConfig(BaseModel):
     console_url: str = Field(..., description="URL to get an API key")
     default_base_url: Optional[str] = Field(None, description="Default base URL")
     test_model: Optional[str] = Field(None, description="Model ID used for connection testing")
+    category: str = Field("llm", description="Provider category: 'llm' or 'tool'")
 
 
 class ProviderSettingsResponse(BaseModel):

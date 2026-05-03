@@ -244,18 +244,16 @@ class Settings(BaseSettings):
                 'console_url': meta['console_url'],
                 'default_base_url': meta['default_base_url'],
                 'test_model': meta['test_model'],
+                'category': 'tool' if provider_id == 'DASHSCOPE' else 'llm',
             }
         return configs
 
+    _update_lock: ClassVar[threading.Lock] = threading.Lock()
+
     def update_providers(self, updates: Dict[str, Dict[str, Optional[str]]]) -> List[str]:
         """Update provider settings in-memory, in os.environ, and persist to .env."""
-        lock = getattr(self, '_update_lock', None)
-        if lock is None:
-            self._update_lock = threading.Lock()
-            lock = self._update_lock
-
         updated = []
-        with lock:
+        with self._update_lock:
             for provider_id, fields in updates.items():
                 provider_id = provider_id.upper()
                 if provider_id not in self.PROVIDERS:
@@ -264,22 +262,21 @@ class Settings(BaseSettings):
                 # Update API key
                 if 'api_key' in fields:
                     new_key = fields['api_key']
-                    # Skip masked values
-                    if new_key and new_key.startswith('*'):
-                        continue
-                    key_attr = self._PROVIDER_KEY_ATTRS.get(provider_id)
-                    if key_attr:
-                        setattr(self, key_attr, new_key or None)
-                        env_var = self.PROVIDERS[provider_id]['key_env']
-                        if new_key:
-                            os.environ[env_var] = new_key
-                        elif env_var in os.environ:
-                            del os.environ[env_var]
-                        updated.append(provider_id)
+                    # Skip masked values, but do NOT skip the rest of this provider's fields
+                    if not (new_key and new_key.startswith('*')):
+                        key_attr = self._PROVIDER_KEY_ATTRS.get(provider_id)
+                        if key_attr:
+                            setattr(self, key_attr, new_key or None)
+                            env_var = self.PROVIDERS[provider_id]['key_env']
+                            if new_key:
+                                os.environ[env_var] = new_key
+                            elif env_var in os.environ:
+                                del os.environ[env_var]
+                            updated.append(provider_id)
 
                 # Update base URL
                 if 'base_url' in fields:
-                    new_url = fields['base_url']
+                    new_url = fields['base_url'] or None  # normalize empty string to None
                     url_attr = self._PROVIDER_URL_ATTRS.get(provider_id)
                     if url_attr and new_url is not None:
                         setattr(self, url_attr, new_url)
@@ -373,7 +370,10 @@ class Settings(BaseSettings):
         if new_lines and not new_lines[-1].endswith('\n'):
             new_lines[-1] += '\n'
 
-        env_path.write_text(''.join(new_lines))
+        # Atomic write: write to temp file then rename
+        tmp_path = env_path.with_suffix('.env.tmp')
+        tmp_path.write_text(''.join(new_lines))
+        tmp_path.replace(env_path)
         logger.info(f"Persisted settings to {env_path}")
 
     def test_provider(self, provider_id: str) -> Dict[str, Any]:
