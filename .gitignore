@@ -11,4 +11,5 @@ venv
 .Python
 .cursor
 .claude
+.ruff_cache
 CLAUDE.md
