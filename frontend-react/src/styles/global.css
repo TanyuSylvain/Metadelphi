@@ -1,0 +1,233 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Markdown content ── */
+.md-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.88);
+  word-break: break-word;
+}
+
+.md-content p {
+  margin: 0 0 10px;
+}
+.md-content p:last-child {
+  margin-bottom: 0;
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.md-content h1 { font-size: 1.4em; }
+.md-content h2 { font-size: 1.2em; }
+.md-content h3 { font-size: 1.1em; }
+
+.md-content code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  color: #d63384;
+}
+
+.md-content pre {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.md-content pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: 13px;
+}
+
+.md-content blockquote {
+  border-left: 4px solid #d1d5db;
+  margin: 10px 0;
+  padding: 4px 16px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.md-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.md-content th,
+.md-content td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 12px;
+}
+
+.md-content th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.md-content ul,
+.md-content ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.md-content li {
+  margin: 4px 0;
+}
+
+/* ── Thinking block pulse animation ── */
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.thinking-streaming .ant-collapse-header {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark scrollbars for sidebar */
+.ant-layout-sider ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+.ant-layout-sider ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Cursor blink for streaming ── */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▋';
+  color: #4a9eff;
+  animation: cursor-blink 1s step-end infinite;
+  font-size: 0.9em;
+  margin-left: 1px;
+}
+
+/* ── Score badge colors ── */
+.score-excellent { color: #16a34a !important; background: #dcfce7 !important; }
+.score-good      { color: #1d4ed8 !important; background: #dbeafe !important; }
+.score-fair      { color: #a16207 !important; background: #fef9c3 !important; }
+.score-poor      { color: #dc2626 !important; background: #fee2e2 !important; }
+
+/* ── Agent card accent borders ── */
+.agent-card-expert  { border-left: 3px solid #4a9eff !important; }
+.agent-card-critic  { border-left: 3px solid #fb923c !important; }
+.agent-card-synthesis { border-left: 3px solid #a78bfa !important; }
+
+/* ── Citation ref ── */
+.citation-ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(74, 158, 255, 0.1);
+  color: #4a9eff;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  vertical-align: super;
+  margin: 0 1px;
+  text-decoration: none;
+  transition: all 0.15s;
+  line-height: 1;
+}
+
+.citation-ref:hover {
+  background: #4a9eff;
+  color: #fff;
+}
+
+/* ── KaTeX display block centering ── */
+.katex-display {
+  margin: 12px 0;
+}
+
+/* ── Debate round card expanded header ── */
+.debate-round-expanded .ant-collapse-header {
+  background: #1a1a2e !important;
+  color: #ffffff !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+
+/* ── Provider logo in metrics bar ── */
+.provider-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ── Copy button hover reveal ── */
+.msg-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+div:hover > .msg-copy-btn {
+  opacity: 1;
+}
+
+/* ── Panel resize handle ── */
+.panel-resize-handle {
+  width: 4px;
+  background: transparent;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle.dragging {
+  background: rgba(74, 158, 255, 0.3);
+}

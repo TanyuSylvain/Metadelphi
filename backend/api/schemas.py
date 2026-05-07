@@ -107,6 +107,7 @@ class MessageInfo(BaseModel):
     content: str = Field(..., description="Message content")
     timestamp: str = Field(..., description="Message timestamp")
     model: Optional[str] = Field(None, description="Model used (for assistant messages)")
+    message_type: Optional[str] = Field(None, description="Message type (e.g. final_answer, moderator_init)")
     metadata: Optional[Dict] = Field(default=None, description="Message metadata including metrics")
 
 

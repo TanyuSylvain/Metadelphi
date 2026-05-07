@@ -39,9 +39,9 @@ fi
 
 open_browser() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        open http://localhost:8080/index.html
+        open http://localhost:8000/
     else
-        xdg-open http://localhost:8080/index.html 2>/dev/null || echo "Please open http://localhost:8080/index.html in your browser"
+        xdg-open http://localhost:8000/ 2>/dev/null || echo "Please open http://localhost:8000/ in your browser"
     fi
 }
 
@@ -53,8 +53,8 @@ fi
 
 # Cleanup function
 cleanup() {
-    echo "Stopping servers..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    echo "Stopping server..."
+    kill $BACKEND_PID 2>/dev/null
     exit 0
 }
 
@@ -63,27 +63,19 @@ trap cleanup SIGINT SIGTERM
 echo "Starting Metadelphi..."
 echo "==================="
 
-# Start backend server
-echo "Starting backend server on port 8000..."
+# Start backend server (also serves React frontend)
+echo "Starting server on port 8000..."
 .venv/bin/python -m backend.main &
 BACKEND_PID=$!
 
-# Wait for backend to start
+# Wait for server to start
 sleep 2
-
-# Start frontend server
-echo "Starting frontend server on port 8080..."
-.venv/bin/python -m http.server 8080 --directory frontend/src &
-FRONTEND_PID=$!
-
-# Wait a bit more for frontend to start
-sleep 1
 
 echo ""
 echo "Metadelphi is running!"
 echo "==================="
-echo "Backend API: http://localhost:8000"
-echo "Frontend:    http://localhost:8080/index.html"
+echo "App:         http://localhost:8000/"
+echo "Backend API: http://localhost:8000/docs"
 echo ""
 
 # Open browser

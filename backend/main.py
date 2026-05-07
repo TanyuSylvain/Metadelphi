@@ -5,9 +5,11 @@ This is the refactored version of the original server.py
 with improved structure and organization.
 """
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.api.routes import api_router
@@ -33,13 +35,14 @@ app.add_middleware(
 # Include all API routes
 app.include_router(api_router)
 
-
-@app.get("/", include_in_schema=False)
-async def root():
-    """
-    Root endpoint - redirects to API documentation.
-    """
-    return RedirectResponse(url="/docs")
+# Serve React frontend if dist-react exists
+_DIST_REACT = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist-react")
+if os.path.isdir(_DIST_REACT):
+    app.mount("/", StaticFiles(directory=_DIST_REACT, html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return RedirectResponse(url="/docs")
 
 
 @app.get("/info")

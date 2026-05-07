@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metadelphi – Multi-Agent Config</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; background: #f5f5f5; min-height: 100vh; display: flex; flex-direction: column; color: #333; }
+
+  .page-note { background: #f0f4ff; border-bottom: 1px solid #d4d8f0; padding: 10px 24px; font-size: 12px; color: #4a60c4; display: flex; align-items: center; gap: 6px; }
+
+  .demo-section { padding: 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+  h2 { font-size: 15px; font-weight: 600; color: #555; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  h2::before { content: ''; display: block; width: 3px; height: 16px; background: #6c63ff; border-radius: 2px; }
+
+  .header { height: 52px; background: #fff; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; padding: 0 14px; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; border-radius: 8px; border: 1px solid #e8e8e8; }
+  .segmented { display: flex; background: #f0f0f0; border-radius: 6px; padding: 2px; }
+  .seg-btn { padding: 4px 12px; border-radius: 4px; border: none; background: transparent; font-size: 12px; font-weight: 500; cursor: pointer; color: #666; }
+  .seg-btn.active { background: #6c63ff; color: #fff; box-shadow: 0 1px 3px rgba(108,99,255,0.3); }
+
+  /* Config Panel */
+  .config-panel { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .config-header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; border-bottom: 1px solid transparent; transition: background 0.12s; }
+  .config-header:hover { background: #fafafa; }
+  .config-header.open { border-bottom-color: #f0f0f0; }
+  .config-header-icon { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #6c63ff22, #a78bfa22); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .config-header-title { font-size: 13px; font-weight: 600; color: #333; }
+  .config-header-summary { font-size: 11px; color: #9ca3af; margin-left: 4px; }
+  .config-chevron { margin-left: auto; font-size: 12px; color: #9ca3af; transition: transform 0.2s; }
+  .config-chevron.open { transform: rotate(180deg); }
+  .config-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+  .roles-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .role-row { background: #fafafa; border: 1px solid #f0f0f0; border-radius: 8px; padding: 12px; }
+  .role-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .role-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .role-dot.mod { background: #6c63ff; }
+  .role-dot.exp { background: #4a9eff; }
+  .role-dot.crit { background: #fb923c; }
+  .role-label.mod { color: #6c63ff; }
+  .role-label.exp { color: #4a9eff; }
+  .role-label.crit { color: #fb923c; }
+  .role-select-wrap { margin-bottom: 10px; }
+  .role-select { width: 100%; padding: 6px 28px 6px 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; color: #333; }
+  .role-select:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 2px rgba(74,158,255,0.15); }
+  .thinking-row { display: flex; align-items: center; justify-content: space-between; }
+  .thinking-label { font-size: 11px; color: #6b7280; }
+  .switch { width: 30px; height: 17px; background: #d9d9d9; border-radius: 9px; position: relative; cursor: pointer; transition: background 0.2s; }
+  .switch.on { background: #4a9eff; }
+  .switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .switch.on::after { left: 15px; }
+  .switch.disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .sliders-section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .slider-item { background: #fafafa; border: 1px solid #f0f0f0; border-radius: 8px; padding: 12px; }
+  .slider-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .slider-label { font-size: 12px; font-weight: 600; color: #555; }
+  .slider-value { font-size: 14px; font-weight: 700; color: #4a9eff; min-width: 28px; text-align: right; }
+  .slider-value.purple { color: #6c63ff; }
+  .slider-wrap { position: relative; }
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px;
+    background: linear-gradient(to right, #4a9eff 30%, #e5e7eb 30%);
+    outline: none; cursor: pointer;
+  }
+  input[type=range].purple {
+    background: linear-gradient(to right, #6c63ff 80%, #e5e7eb 80%);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; border: 2px solid #4a9eff; box-shadow: 0 1px 4px rgba(0,0,0,0.15); cursor: pointer;
+  }
+  input[type=range].purple::-webkit-slider-thumb { border-color: #6c63ff; }
+  .slider-marks { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: #9ca3af; }
+
+  .config-footer { padding: 12px 16px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; background: #fafafa; }
+  .btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; }
+  .btn-ghost { background: transparent; border: 1px solid #d9d9d9; color: #555; }
+  .btn-ghost:hover { border-color: #4a9eff; color: #4a9eff; }
+  .btn-primary { background: #6c63ff; border: none; color: #fff; }
+  .btn-primary:hover { background: #5a52ee; }
+
+  /* Collapsed preview */
+  .collapsed-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; }
+  .collapsed-header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .collapsed-header-icon { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #6c63ff22, #a78bfa22); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .collapsed-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 500; background: #f0f4ff; color: #4a60c4; }
+</style>
+</head>
+<body>
+<div class="page-note">ℹ️ This mockup shows the Multi-Agent Configuration panel — collapsed state (top) and expanded state (bottom).</div>
+
+<div class="demo-section">
+  <!-- Fake header context -->
+  <div class="header">
+    <div class="segmented">
+      <button class="seg-btn">💬 Simple</button>
+      <button class="seg-btn active">⚖️ Debate</button>
+      <button class="seg-btn">🛠 Coworking</button>
+    </div>
+    <span style="font-size:12px;color:#999;margin-left:6px">Debate mode selected → config panel appears below header</span>
+  </div>
+
+  <h2>Collapsed State</h2>
+  <div class="collapsed-card" style="margin-bottom:24px">
+    <div class="collapsed-header" onclick="this.closest('.collapsed-card').querySelector('.coll-body').style.display='block';this.style.display='none'">
+      <div class="collapsed-header-icon">⚙️</div>
+      <span style="font-size:13px;font-weight:600;color:#333">Agent Configuration</span>
+      <div class="collapsed-chips" style="margin-left:12px">
+        <span class="chip">🧭 mistral-large</span>
+        <span class="chip">📝 qwen-max</span>
+        <span class="chip">🔎 deepseek-chat</span>
+        <span class="chip">3 rounds</span>
+        <span class="chip">threshold 80</span>
+      </div>
+      <span style="margin-left:auto;font-size:14px;color:#9ca3af">▼</span>
+    </div>
+    <div class="coll-body" style="display:none;padding:12px 16px;font-size:12px;color:#999;font-style:italic">Click collapsed header to expand (see below for full expanded state)</div>
+  </div>
+
+  <h2>Expanded State</h2>
+  <div class="config-panel">
+    <div class="config-header open">
+      <div class="config-header-icon">⚙️</div>
+      <span class="config-header-title">Agent Configuration</span>
+      <span class="config-header-summary">mistral-large · qwen-max · deepseek-chat</span>
+      <span class="config-chevron open">▼</span>
+    </div>
+
+    <div class="config-body">
+      <!-- Role rows -->
+      <div class="roles-grid">
+        <div class="role-row">
+          <div class="role-label mod"><div class="role-dot mod"></div>Moderator</div>
+          <div class="role-select-wrap">
+            <select class="role-select">
+              <optgroup label="Mistral AI">
+                <option selected>mistral-large-latest</option>
+                <option>mistral-small-latest</option>
+              </optgroup>
+              <optgroup label="Alibaba Qwen">
+                <option>qwen-max</option>
+                <option>qwen-plus</option>
+              </optgroup>
+              <optgroup label="DeepSeek">
+                <option>deepseek-chat</option>
+              </optgroup>
+              <optgroup label="OpenAI">
+                <option>gpt-4o</option>
+                <option>gpt-4o-mini</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="thinking-row">
+            <span class="thinking-label">💭 Thinking mode</span>
+            <div class="switch disabled" title="Not supported by this model"></div>
+          </div>
+        </div>
+
+        <div class="role-row">
+          <div class="role-label exp"><div class="role-dot exp"></div>Expert</div>
+          <div class="role-select-wrap">
+            <select class="role-select">
+              <optgroup label="Mistral AI">
+                <option>mistral-large-latest</option>
+              </optgroup>
+              <optgroup label="Alibaba Qwen">
+                <option selected>qwen-max</option>
+                <option>qwen-plus</option>
+              </optgroup>
+              <optgroup label="DeepSeek">
+                <option>deepseek-chat</option>
+                <option>deepseek-reasoner</option>
+              </optgroup>
+              <optgroup label="OpenAI">
+                <option>gpt-4o</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="thinking-row">
+            <span class="thinking-label">💭 Thinking mode</span>
+            <div class="switch on"></div>
+          </div>
+        </div>
+
+        <div class="role-row">
+          <div class="role-label crit"><div class="role-dot crit"></div>Critic</div>
+          <div class="role-select-wrap">
+            <select class="role-select">
+              <optgroup label="Mistral AI">
+                <option>mistral-large-latest</option>
+              </optgroup>
+              <optgroup label="Alibaba Qwen">
+                <option>qwen-max</option>
+              </optgroup>
+              <optgroup label="DeepSeek">
+                <option selected>deepseek-chat</option>
+              </optgroup>
+              <optgroup label="OpenAI">
+                <option>gpt-4o</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="thinking-row">
+            <span class="thinking-label">💭 Thinking mode</span>
+            <div class="switch"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sliders -->
+      <div class="sliders-section">
+        <div class="slider-item">
+          <div class="slider-header">
+            <span class="slider-label">🔄 Max Iterations</span>
+            <span class="slider-value" id="iter-val">3</span>
+          </div>
+          <div class="slider-wrap">
+            <input type="range" min="1" max="10" value="3" oninput="document.getElementById('iter-val').textContent=this.value;this.style.background='linear-gradient(to right, #4a9eff '+((this.value-1)/9*100)+'%, #e5e7eb '+((this.value-1)/9*100)+'%)'">
+          </div>
+          <div class="slider-marks">
+            <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
+          </div>
+        </div>
+        <div class="slider-item">
+          <div class="slider-header">
+            <span class="slider-label">🎯 Score Threshold</span>
+            <span class="slider-value purple" id="score-val">80</span>
+          </div>
+          <div class="slider-wrap">
+            <input type="range" class="purple" min="50" max="100" value="80" oninput="document.getElementById('score-val').textContent=this.value;this.style.background='linear-gradient(to right, #6c63ff '+((this.value-50)/50*100)+'%, #e5e7eb '+((this.value-50)/50*100)+'%)'">
+          </div>
+          <div class="slider-marks">
+            <span>50</span><span>60</span><span>70</span><span>80</span><span>90</span><span>100</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="config-footer">
+      <span style="font-size:11px;color:#9ca3af;margin-right:auto">Changes apply to the next message sent</span>
+      <button class="btn btn-ghost">Reset</button>
+      <button class="btn btn-primary">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.switch:not(.disabled)').forEach(sw => sw.addEventListener('click', () => sw.classList.toggle('on')));
+</script>
+</body>
+</html>

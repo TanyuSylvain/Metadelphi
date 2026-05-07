@@ -13,3 +13,5 @@ venv
 .claude
 .ruff_cache
 CLAUDE.md
+frontend/dist-react/
+frontend-react/node_modules/

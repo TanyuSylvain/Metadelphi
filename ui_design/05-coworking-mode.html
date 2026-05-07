@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metadelphi – Coworking Mode</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; background: #f5f5f5; height: 100vh; display: flex; overflow: hidden; color: #333; }
+  .sidebar { width: 200px; min-width: 200px; background: #1a1a2e; display: flex; flex-direction: column; }
+  .sidebar-logo { padding: 14px; border-bottom: 1px solid #2a2a4e; display: flex; align-items: center; gap: 8px; }
+  .logo-icon { width: 26px; height: 26px; border-radius: 6px; background: linear-gradient(135deg, #34d399, #059669); display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .logo-text { font-size: 13px; font-weight: 600; color: #fff; }
+  .conv-list { flex: 1; padding: 6px; }
+  .conv-item { padding: 8px 10px; border-radius: 5px; margin-bottom: 1px; cursor: pointer; }
+  .conv-item.active { background: #3a3a5e; }
+  .conv-title { font-size: 12px; color: #c0c0d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-item.active .conv-title { color: #fff; }
+  .conv-time { font-size: 11px; color: #5a5a7a; margin-top: 2px; }
+
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .header { height: 52px; background: #fff; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; padding: 0 12px; gap: 10px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .segmented { display: flex; background: #f0f0f0; border-radius: 6px; padding: 2px; }
+  .seg-btn { padding: 4px 12px; border-radius: 4px; border: none; background: transparent; font-size: 12px; font-weight: 500; cursor: pointer; color: #666; display: flex; align-items: center; gap: 4px; }
+  .seg-btn.active { background: #059669; color: #fff; box-shadow: 0 1px 3px rgba(5,150,105,0.3); }
+  .model-select { padding: 5px 28px 5px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; background: #fff; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; color: #333; min-width: 160px; }
+  .hspacer { flex: 1; }
+  .btn-icon { width: 32px; height: 32px; border-radius: 6px; border: 1px solid #e8e8e8; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; font-size: 15px; }
+
+  .workspace-bar { padding: 8px 14px; background: #fff; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; }
+  .ws-label { font-size: 11px; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+  .ws-path { flex: 1; padding: 5px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; font-family: monospace; background: #fafafa; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #d9d9d9; background: #fff; font-size: 12px; color: #555; cursor: pointer; white-space: nowrap; }
+  .ws-btn:hover { border-color: #059669; color: #059669; }
+
+  .content-area { flex: 1; display: flex; overflow: hidden; }
+  .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .msg-row { display: flex; }
+  .msg-row.user { justify-content: flex-end; }
+  .bubble { max-width: 80%; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; }
+  .bubble.user { background: #1a1a2e; color: #fff; border-radius: 10px 10px 2px 10px; }
+  .bubble.system { background: #ecfdf5; color: #065f46; border-left: 3px solid #059669; border-radius: 0 8px 8px 0; font-size: 12px; font-style: italic; }
+  .input-area { padding: 10px 12px; background: #fff; border-top: 1px solid #e8e8e8; display: flex; gap: 8px; }
+  textarea { flex: 1; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 8px; resize: none; font-size: 13px; font-family: inherit; outline: none; min-height: 40px; }
+  .send-btn { padding: 8px 16px; border-radius: 8px; background: #059669; border: none; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* Coworking panel */
+  .cowork-panel { width: 420px; min-width: 380px; background: #fff; border-left: 1px solid #e8e8e8; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-header { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; background: #fafafa; }
+  .panel-title { font-size: 14px; font-weight: 600; color: #333; }
+  .panel-subtitle { font-size: 11px; color: #9ca3af; margin-left: auto; }
+
+  .panel-body { flex: 1; overflow-y: auto; }
+
+  /* Tool cards section */
+  .section { padding: 12px 14px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #9ca3af; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+
+  .tool-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
+  .tool-header { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; background: #fafafa; user-select: none; }
+  .tool-header:hover { background: #f3f4f6; }
+  .tool-status { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .tool-status.running { background: rgba(74,158,255,0.1); }
+  .tool-status.done { background: rgba(34,197,94,0.1); color: #16a34a; font-size: 12px; }
+  .tool-status.error { background: rgba(239,68,68,0.1); color: #dc2626; font-size: 12px; }
+  @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .spin-icon { animation: spin-slow 1.2s linear infinite; display: inline-block; font-size: 13px; color: #4a9eff; }
+  .tool-name { font-size: 12px; font-weight: 600; color: #333; }
+  .tool-input-preview { font-size: 11px; color: #9ca3af; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tool-duration { font-size: 10px; color: #9ca3af; margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+  .tool-chevron { font-size: 10px; color: #9ca3af; flex-shrink: 0; }
+
+  .tool-body { padding: 10px 12px; border-top: 1px solid #f0f0f0; font-size: 11px; }
+  .io-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #9ca3af; margin-bottom: 4px; }
+  .code-block { background: #f6f8fa; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 11px; white-space: pre; overflow-x: auto; margin-bottom: 8px; color: #374151; }
+
+  /* File tracker */
+  .file-list { list-style: none; }
+  .file-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f9f9f9; }
+  .file-icon { font-size: 13px; }
+  .file-path { font-size: 11px; font-family: monospace; color: #374151; flex: 1; }
+  .file-size { font-size: 10px; color: #9ca3af; }
+  .file-open { font-size: 11px; color: #4a9eff; cursor: pointer; text-decoration: none; }
+  .file-open:hover { text-decoration: underline; }
+  .deleted-item .file-path { text-decoration: line-through; color: #9ca3af; }
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="logo-icon">🛠</div><span class="logo-text">Metadelphi</span></div>
+  <div class="conv-list">
+    <div class="conv-item active"><div class="conv-title">Build REST API server</div><div class="conv-time">Active now</div></div>
+    <div class="conv-item"><div class="conv-title">Refactor auth module</div><div class="conv-time">Yesterday</div></div>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="header">
+    <div class="segmented">
+      <button class="seg-btn">💬 Simple</button>
+      <button class="seg-btn">⚖️ Debate</button>
+      <button class="seg-btn active">🛠 Coworking</button>
+    </div>
+    <select class="model-select"><option>qwen-max</option></select>
+    <div class="hspacer"></div>
+    <button class="btn-icon">⚙️</button>
+  </header>
+
+  <div class="workspace-bar">
+    <span class="ws-label">Workspace</span>
+    <div class="ws-path">/Users/tanyu/dev/myproject</div>
+    <button class="ws-btn">📁 Browse…</button>
+  </div>
+
+  <div class="content-area">
+    <!-- Chat -->
+    <div class="chat-panel">
+      <div class="messages">
+        <div class="msg-row user">
+          <div class="bubble user">Create a simple REST API server in Python using FastAPI with user CRUD endpoints and SQLite storage.</div>
+        </div>
+        <div class="msg-row">
+          <div class="bubble system">Agent started — workspace: /Users/tanyu/dev/myproject · model: qwen-max · 25 iterations max</div>
+        </div>
+      </div>
+      <div class="input-area">
+        <textarea rows="1" placeholder="Send another message…" disabled></textarea>
+        <button class="send-btn" style="background:#9ca3af;cursor:not-allowed">⏳ Working…</button>
+      </div>
+    </div>
+
+    <!-- Coworking panel -->
+    <div class="cowork-panel">
+      <div class="panel-header">
+        <span>🛠</span>
+        <span class="panel-title">Agent Worklog</span>
+        <span class="panel-subtitle">Round 3 of 25 · 3 tools used</span>
+      </div>
+      <div class="panel-body">
+        <!-- Tool cards section -->
+        <div class="section">
+          <div class="section-title">⚡ Tool Executions</div>
+
+          <!-- Tool 1: done -->
+          <div class="tool-card">
+            <div class="tool-header" onclick="toggleTool(this)">
+              <div class="tool-status done">✓</div>
+              <span class="tool-name">write_file</span>
+              <span class="tool-input-preview">main.py · FastAPI app setup...</span>
+              <span class="tool-duration">0.4s</span>
+              <span class="tool-chevron">▼</span>
+            </div>
+            <div class="tool-body">
+              <div class="io-label">Input</div>
+              <div class="code-block">{"path": "main.py", "content": "from fastapi import FastAPI\nfrom routers import users\n\napp = FastAPI(title='UserAPI')\napp.include_router(users.router)"}</div>
+              <div class="io-label">Output</div>
+              <div class="code-block" style="color:#16a34a">✓ File written successfully (342 bytes)</div>
+            </div>
+          </div>
+
+          <!-- Tool 2: done -->
+          <div class="tool-card">
+            <div class="tool-header" onclick="toggleTool(this)">
+              <div class="tool-status done">✓</div>
+              <span class="tool-name">write_file</span>
+              <span class="tool-input-preview">models.py · SQLAlchemy User model...</span>
+              <span class="tool-duration">0.3s</span>
+              <span class="tool-chevron">▶</span>
+            </div>
+          </div>
+
+          <!-- Tool 3: running -->
+          <div class="tool-card">
+            <div class="tool-header" onclick="toggleTool(this)">
+              <div class="tool-status running"><span class="spin-icon">⟳</span></div>
+              <span class="tool-name">write_file</span>
+              <span class="tool-input-preview">routers/users.py · CRUD endpoints...</span>
+              <span class="tool-duration" style="color:#4a9eff">Running…</span>
+              <span class="tool-chevron">▶</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Generated files section -->
+        <div class="section" style="border-top:1px solid #f0f0f0">
+          <div class="section-title">📁 Generated Files</div>
+          <ul class="file-list">
+            <li class="file-item">
+              <span class="file-icon">🐍</span>
+              <span class="file-path">main.py</span>
+              <span class="file-size">342 B</span>
+              <a class="file-open">Open ↗</a>
+            </li>
+            <li class="file-item">
+              <span class="file-icon">🐍</span>
+              <span class="file-path">models.py</span>
+              <span class="file-size">1.2 KB</span>
+              <a class="file-open">Open ↗</a>
+            </li>
+            <li class="file-item">
+              <span class="file-icon">📂</span>
+              <span class="file-path">routers/</span>
+              <span class="file-size">–</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTool(header) {
+  const body = header.nextElementSibling;
+  const chev = header.querySelector('.tool-chevron');
+  if (!body || !body.classList.contains('tool-body')) return;
+  const isOpen = body.style.display !== 'none' && body.style.display !== '';
+  body.style.display = isOpen ? 'none' : 'block';
+  chev.textContent = isOpen ? '▶' : '▼';
+}
+// Default: first tool open
+document.querySelectorAll('.tool-card')[0].querySelector('.tool-body').style.display = 'block';
+</script>
+</body>
+</html>
