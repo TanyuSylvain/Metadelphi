@@ -15,6 +15,14 @@ const MODE_LABELS: Record<string, string> = {
   coworking: 'Coworking',
 }
 
+function getConversationModes(conv: ConversationInfo): string[] {
+  const history = conv.metadata?.mode_history
+  if (Array.isArray(history) && history.length > 0) {
+    return history.filter((mode): mode is string => typeof mode === 'string')
+  }
+  return []
+}
+
 interface Props {
   conversations: ConversationInfo[]
   loading: boolean
@@ -34,6 +42,12 @@ export default function ConversationList({
   onDelete,
   onDeleteAll,
 }: Props) {
+  const resolveModes = (conv: ConversationInfo) => {
+    const usedModes = getConversationModes(conv)
+    if (usedModes.length > 0) return usedModes
+    return conv.id === currentId ? [] : (conv.mode ? [conv.mode] : [])
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Logo */}
@@ -134,18 +148,21 @@ export default function ConversationList({
                 {conv.title || 'New Conversation'}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span
-                  style={{
-                    fontSize: 10,
-                    padding: '1px 5px',
-                    borderRadius: 3,
-                    background: `${MODE_COLORS[conv.mode] ?? '#4a9eff'}22`,
-                    color: MODE_COLORS[conv.mode] ?? '#4a9eff',
-                    fontWeight: 600,
-                  }}
-                >
-                  {MODE_LABELS[conv.mode] ?? conv.mode}
-                </span>
+                {resolveModes(conv).map((mode) => (
+                  <span
+                    key={`${conv.id}-${mode}`}
+                    style={{
+                      fontSize: 10,
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      background: `${MODE_COLORS[mode] ?? '#4a9eff'}22`,
+                      color: MODE_COLORS[mode] ?? '#4a9eff',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {MODE_LABELS[mode] ?? mode}
+                  </span>
+                ))}
                 <span style={{ fontSize: 10, color: '#5a5a7a' }}>
                   {formatRelativeTime(conv.updated_at)}
                 </span>

@@ -44,7 +44,7 @@ export default function HeaderToggles({
   onDebatePanelChange,
   onSettingsClick,
 }: Props) {
-  const currentModel = models.find((m) => m.model_id === selectedModel)
+  const currentModel = models.find((m) => m.model_ref === selectedModel)
   const supportsThinking = currentModel?.supports_thinking ?? false
   const thinkingLocked = currentModel?.thinking_locked ?? false
 

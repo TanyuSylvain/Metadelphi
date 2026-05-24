@@ -199,6 +199,7 @@ body,
   width: 18px;
   height: 18px;
   border-radius: 4px;
+  border: 1px solid #e5e7eb;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -214,6 +215,7 @@ body,
   right: 10px;
   opacity: 0;
   transition: opacity 0.15s;
+  z-index: 1;
 }
 div:hover > .msg-copy-btn {
   opacity: 1;
@@ -230,4 +232,38 @@ div:hover > .msg-copy-btn {
 .panel-resize-handle:hover,
 .panel-resize-handle.dragging {
   background: rgba(74, 158, 255, 0.3);
+}
+
+/* ── History sidebar slide animation ── */
+.history-sider {
+  transition: width 0.24s ease, min-width 0.24s ease, max-width 0.24s ease, opacity 0.2s ease;
+  will-change: width, opacity;
+}
+
+.history-sider .history-sider-inner {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.24s ease, opacity 0.18s ease;
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.history-sider.collapsed {
+  opacity: 0;
+}
+
+.history-sider.collapsed .history-sider-inner {
+  transform: translateX(-24px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.history-resize-handle {
+  transition: width 0.24s ease, opacity 0.18s ease;
+}
+
+.history-resize-handle.collapsed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
 }

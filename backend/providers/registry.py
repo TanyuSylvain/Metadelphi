@@ -2,7 +2,7 @@
 Provider registry for managing available LLM providers.
 """
 
-from typing import Dict, List, Type
+from typing import Dict, List, Optional, Type
 from .base import BaseLLMProvider
 from .mistral import MistralProvider
 from .qwen import QwenProvider
@@ -17,6 +17,8 @@ from .openai_image import OpenAIImageProvider
 
 class ProviderRegistry:
     """Registry for all available LLM providers."""
+
+    MODEL_REF_SEPARATOR = "::"
 
     # Registry of provider name to provider class
     _providers: Dict[str, Type[BaseLLMProvider]] = {
@@ -63,6 +65,19 @@ class ProviderRegistry:
         return list(cls._providers.keys())
 
     @classmethod
+    def build_model_ref(cls, provider_name: str, model_id: str) -> str:
+        """Build a provider-qualified model reference."""
+        return f"{provider_name}{cls.MODEL_REF_SEPARATOR}{model_id}"
+
+    @classmethod
+    def parse_model_ref(cls, model_ref: str) -> tuple[Optional[str], str]:
+        """Parse a provider-qualified model reference into provider and raw model ID."""
+        if cls.MODEL_REF_SEPARATOR in model_ref:
+            provider_name, raw_model_id = model_ref.split(cls.MODEL_REF_SEPARATOR, 1)
+            return provider_name, raw_model_id
+        return None, model_ref
+
+    @classmethod
     def get_all_models(cls) -> Dict[str, List[Dict[str, str]]]:
         """
         Get all available models grouped by provider.
@@ -96,7 +111,11 @@ class ProviderRegistry:
         cls._providers[name] = provider_class
 
     @classmethod
-    def find_provider_for_model(cls, model_id: str) -> tuple[str, BaseLLMProvider]:
+    def find_provider_for_model(
+        cls,
+        model_id: str,
+        provider_name: Optional[str] = None,
+    ) -> tuple[str, BaseLLMProvider]:
         """
         Find which provider supports a given model ID.
 
@@ -109,13 +128,26 @@ class ProviderRegistry:
         Raises:
             ValueError: If model_id is not found in any provider
         """
+        provider_hint, raw_model_id = cls.parse_model_ref(model_id)
+        provider_name = provider_name or provider_hint
+
+        if provider_name is not None:
+            provider = cls.get_provider(provider_name)
+            model_ids = [m["id"] for m in provider.get_available_models()]
+            if raw_model_id in model_ids:
+                return provider_name, provider
+            raise ValueError(
+                f"Model '{raw_model_id}' not found for provider '{provider_name}'. "
+                f"Available models: {', '.join(model_ids)}"
+            )
+
         for provider_name in cls.list_providers():
             provider = cls.get_provider(provider_name)
             model_ids = [m["id"] for m in provider.get_available_models()]
-            if model_id in model_ids:
+            if raw_model_id in model_ids:
                 return provider_name, provider
 
         raise ValueError(
-            f"Model '{model_id}' not found in any registered provider. "
+            f"Model '{raw_model_id}' not found in any registered provider. "
             f"Use get_all_models() to see available models."
         )

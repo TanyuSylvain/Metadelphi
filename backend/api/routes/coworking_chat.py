@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, FileResponse
 
 from backend.api.schemas import CoworkingChatRequest, OpenFileRequest
+from backend.api.model_refs import resolve_model
 from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.coworking_agent import (
     CoworkingAgent,
@@ -119,10 +120,13 @@ def get_agent(model_id: str, thinking: bool = False) -> CoworkingAgent:
     """
     global _agents, _storage
 
-    agent_key = f"{model_id}:{thinking}"
+    provider_name, raw_model_id = resolve_model(model_id)
+
+    agent_key = f"{provider_name}:{raw_model_id}:{thinking}"
     if agent_key not in _agents:
         _agents[agent_key] = CoworkingAgent(
-            model_id=model_id,
+            model_id=raw_model_id,
+            provider_name=provider_name,
             storage=_storage,
             thinking=thinking
         )
@@ -159,6 +163,7 @@ async def coworking_chat_stream(http_request: Request, request: CoworkingChatReq
 
     # Resolve model
     model_id = request.model or settings.default_model
+    _, raw_model_id = resolve_model(model_id)
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
     run_context = await run_manager.create_run(mode="coworking", conversation_id=conversation_id)
@@ -216,7 +221,7 @@ async def coworking_chat_stream(http_request: Request, request: CoworkingChatReq
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
             "X-Run-ID": run_context.run_id,
-            "X-Model-ID": model_id
+            "X-Model-ID": raw_model_id
         }
     )
 

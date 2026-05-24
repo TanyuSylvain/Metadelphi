@@ -22,6 +22,7 @@ from backend.providers import ProviderFactory
 from backend.storage import ConversationStorage, MemoryStorage
 from backend.utils import TextProcessor, json_converter
 from backend.utils.metrics import DebateMetricsAccumulator
+from backend.utils.conversation_mode import record_used_mode
 from backend.core.multi_agent_state import MultiAgentState, create_initial_state
 from backend.core.prompts import (
     MODERATOR_INIT_PROMPT,
@@ -909,7 +910,10 @@ class MultiAgentDebateWorkflow:
                 title = question[:50] + "..." if len(question) > 50 else question
                 await self.storage.update_conversation_title(conversation_id, title)
                 # Set mode to debate for new conversations in multi-agent workflow
-                await self.storage.update_conversation_metadata(conversation_id, {"mode": "debate"})
+                await self.storage.update_conversation_metadata(
+                    conversation_id,
+                    {"mode": "debate"}
+                )
 
         # Load previous debate state if exists
         debate_state = None
@@ -979,6 +983,7 @@ class MultiAgentDebateWorkflow:
                             message_type="final_answer",
                             metadata={"metrics": metrics}
                         )
+                        await record_used_mode(self.storage, conversation_id, "debate")
                         await self._save_debate_state(conversation_id, current_state)
                     return
 
@@ -1074,6 +1079,7 @@ class MultiAgentDebateWorkflow:
                         message_type="final_answer",
                         metadata={"metrics": metrics}
                     )
+                    await record_used_mode(self.storage, conversation_id, "debate")
                     await self._save_debate_state(conversation_id, current_state)
 
         except asyncio.CancelledError:

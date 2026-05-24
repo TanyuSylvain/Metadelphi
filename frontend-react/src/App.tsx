@@ -47,16 +47,56 @@ export default function App() {
   const messagesRef = useRef<HTMLDivElement>(null)
   const { scrollToBottom, resetScroll } = useSmartScroll(messagesRef)
 
+  const resolveModelRef = useCallback((value: string) => {
+    if (!value) return ''
+    const exact = models.find((m) => m.model_ref === value)
+    if (exact) return exact.model_ref
+
+    const legacyMatches = models.filter((m) => m.model_id === value)
+    if (legacyMatches.length === 1) return legacyMatches[0].model_ref
+    return ''
+  }, [models])
+
   // Scroll to bottom when messages change during streaming
   useEffect(() => {
     scrollToBottom()
   }, [chatStore.messages, scrollToBottom])
 
+  // Migrate persisted legacy raw model IDs to provider-qualified refs when possible.
+  useEffect(() => {
+    if (models.length === 0) return
+
+    const nextSelected = resolveModelRef(prefs.selectedModel)
+    if (prefs.selectedModel && nextSelected && nextSelected !== prefs.selectedModel) {
+      prefs.setSelectedModel(nextSelected)
+    } else if (prefs.selectedModel && !nextSelected && !models.some((m) => m.model_ref === prefs.selectedModel)) {
+      prefs.setSelectedModel('')
+    }
+
+    const nextDebateConfig = {
+      moderator: resolveModelRef(prefs.multiAgentConfig.moderator),
+      expert: resolveModelRef(prefs.multiAgentConfig.expert),
+      critic: resolveModelRef(prefs.multiAgentConfig.critic),
+    }
+
+    if (
+      (prefs.multiAgentConfig.moderator && nextDebateConfig.moderator && nextDebateConfig.moderator !== prefs.multiAgentConfig.moderator) ||
+      (prefs.multiAgentConfig.expert && nextDebateConfig.expert && nextDebateConfig.expert !== prefs.multiAgentConfig.expert) ||
+      (prefs.multiAgentConfig.critic && nextDebateConfig.critic && nextDebateConfig.critic !== prefs.multiAgentConfig.critic) ||
+      (prefs.multiAgentConfig.moderator && !nextDebateConfig.moderator && !models.some((m) => m.model_ref === prefs.multiAgentConfig.moderator)) ||
+      (prefs.multiAgentConfig.expert && !nextDebateConfig.expert && !models.some((m) => m.model_ref === prefs.multiAgentConfig.expert)) ||
+      (prefs.multiAgentConfig.critic && !nextDebateConfig.critic && !models.some((m) => m.model_ref === prefs.multiAgentConfig.critic))
+    ) {
+      prefs.setMultiAgentConfig(nextDebateConfig)
+    }
+  }, [models, prefs, resolveModelRef])
+
   // Load first model if none selected
   useEffect(() => {
-    if (!prefs.selectedModel && models.length > 0) {
+    const selectedExists = models.some((m) => m.model_ref === prefs.selectedModel)
+    if ((!prefs.selectedModel || !selectedExists) && models.length > 0) {
       const first = models.find((m) => !m.is_image_model)
-      if (first) prefs.setSelectedModel(first.model_id)
+      if (first) prefs.setSelectedModel(first.model_ref)
     }
   }, [models, prefs])
 
@@ -64,16 +104,16 @@ export default function App() {
   useEffect(() => {
     if (models.length === 0) return
     if (prefs.imageModeEnabled) {
-      const currentIsText = models.find((m) => m.model_id === prefs.selectedModel && !m.is_image_model)
+      const currentIsText = models.find((m) => m.model_ref === prefs.selectedModel && !m.is_image_model)
       if (currentIsText) {
         const firstImage = models.find((m) => m.is_image_model)
-        if (firstImage) prefs.setSelectedModel(firstImage.model_id)
+        if (firstImage) prefs.setSelectedModel(firstImage.model_ref)
       }
     } else {
-      const currentIsImage = models.find((m) => m.model_id === prefs.selectedModel && m.is_image_model)
+      const currentIsImage = models.find((m) => m.model_ref === prefs.selectedModel && m.is_image_model)
       if (currentIsImage) {
         const firstText = models.find((m) => !m.is_image_model)
-        if (firstText) prefs.setSelectedModel(firstText.model_id)
+        if (firstText) prefs.setSelectedModel(firstText.model_ref)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,13 +249,20 @@ export default function App() {
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Sidebar */}
-      {!prefs.sidebarCollapsed && (
-        <>
-          <Sider
-            width={prefs.sidebarWidth}
-            theme="dark"
-            style={{ overflow: 'hidden', background: '#1a1a2e', flexShrink: 0 }}
-          >
+      <>
+        <Sider
+          width={prefs.sidebarCollapsed ? 0 : prefs.sidebarWidth}
+          theme="dark"
+          className={`history-sider${prefs.sidebarCollapsed ? ' collapsed' : ''}`}
+          style={{
+            overflow: 'hidden',
+            background: '#1a1a2e',
+            flexShrink: 0,
+            minWidth: 0,
+            maxWidth: prefs.sidebarCollapsed ? 0 : prefs.sidebarWidth,
+          }}
+        >
+          <div className="history-sider-inner">
             <ConversationList
               conversations={conversations}
               loading={convsLoading}
@@ -225,15 +272,15 @@ export default function App() {
               onDelete={deleteConversation}
               onDeleteAll={deleteAll}
             />
-          </Sider>
-          {/* Sidebar resize handle */}
-          <div
-            className={`panel-resize-handle${sidebarDragging ? ' dragging' : ''}`}
-            onMouseDown={startSidebarDrag}
-            style={{ background: 'transparent', zIndex: 1 }}
-          />
-        </>
-      )}
+          </div>
+        </Sider>
+        {/* Sidebar resize handle */}
+        <div
+          className={`panel-resize-handle history-resize-handle${sidebarDragging ? ' dragging' : ''}${prefs.sidebarCollapsed ? ' collapsed' : ''}`}
+          onMouseDown={prefs.sidebarCollapsed ? undefined : startSidebarDrag}
+          style={{ background: 'transparent', zIndex: 1 }}
+        />
+      </>
 
       <Layout style={{ overflow: 'hidden' }}>
         {/* Header */}

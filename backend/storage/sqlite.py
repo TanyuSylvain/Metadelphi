@@ -245,7 +245,7 @@ class SQLiteStorage(ConversationStorage):
         await self._init_db()
 
         # Serialize metadata
-        metadata_json = json.dumps(metadata) if metadata else None
+        metadata_json = json.dumps(metadata or {})
 
         async with aiosqlite.connect(self.database_path) as db:
             try:

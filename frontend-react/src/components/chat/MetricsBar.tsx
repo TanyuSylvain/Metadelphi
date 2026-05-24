@@ -1,6 +1,7 @@
 import { Space, Tooltip, Typography } from 'antd'
 import { formatMs } from '../../utils/format'
 import type { StreamMetrics } from '../../types/messages'
+import { getProviderLogoSrc } from '../../utils/providerLogos'
 
 function getProviderInitial(modelId: string): { initial: string; color: string } {
   const lower = modelId.toLowerCase()
@@ -21,6 +22,7 @@ interface Props {
 
 export default function MetricsBar({ metrics, model }: Props) {
   const modelId = metrics.model_id || model || ''
+  const logoSrc = getProviderLogoSrc(modelId)
   const { initial, color } = getProviderInitial(modelId)
 
   const tokenTitle = `${metrics.input_tokens ?? '?'} input ↑ / ${metrics.output_tokens ?? '?'} output ↓`
@@ -37,12 +39,21 @@ export default function MetricsBar({ metrics, model }: Props) {
     >
       {/* Model name — left */}
       <Space size={6} align="center">
-        <div
-          className="provider-logo"
-          style={{ background: color, fontSize: initial.length > 1 ? 8 : 10 }}
-        >
-          {initial}
-        </div>
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt=""
+            className="provider-logo"
+            style={{ objectFit: 'contain', padding: 2, background: '#fff' }}
+          />
+        ) : (
+          <div
+            className="provider-logo"
+            style={{ background: color, fontSize: initial.length > 1 ? 8 : 10 }}
+          >
+            {initial}
+          </div>
+        )}
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           {modelId}
         </Typography.Text>

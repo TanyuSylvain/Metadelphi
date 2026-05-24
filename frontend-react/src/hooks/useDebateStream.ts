@@ -5,6 +5,7 @@ import { useDebateStore } from '../store/debateStore'
 import { generateUUID } from '../utils/uuid'
 import type { MultiAgentChatRequest } from '../types/api'
 import type { ExpertAnswer, CriticReview, ModeratorInit, DebatePhase, TerminationReason } from '../types/debate'
+import type { StreamMetrics } from '../types/messages'
 
 async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Record<string, unknown>> {
   const reader = res.body!.getReader()
@@ -94,6 +95,7 @@ export function useDebateStream() {
             const finalAnswer = event.final_answer as string
             const termination = event.termination_reason as TerminationReason
             const total = event.total_iterations as number
+            const metrics = event.metrics as StreamMetrics | undefined
             if (event.was_direct_answer) debateStore.setDirectAnswer()
             debateStore.finishDebate(termination, total)
 
@@ -104,6 +106,8 @@ export function useDebateStream() {
               content: finalAnswer,
               debateRound: total,
               debateId,
+              metrics,
+              model: req.models?.expert,
             })
             break
           }

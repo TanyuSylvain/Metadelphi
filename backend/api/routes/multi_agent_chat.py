@@ -20,6 +20,7 @@ from backend.api.schemas import (
     MultiAgentModelConfig,
     ThinkingConfig
 )
+from backend.api.model_refs import resolve_model
 from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.multi_agent import MultiAgentDebateWorkflow
 from backend.core.run_manager import RunCancelledError
@@ -120,8 +121,9 @@ def get_debate_default_model() -> str:
 
     if configured_default:
         try:
-            ProviderRegistry.find_provider_for_model(configured_default)
-            return configured_default
+            provider_name, _provider = ProviderRegistry.find_provider_for_model(configured_default)
+            _, raw_model_id = ProviderRegistry.parse_model_ref(configured_default)
+            return ProviderRegistry.build_model_ref(provider_name, raw_model_id)
         except ValueError:
             pass
 
@@ -129,7 +131,7 @@ def get_debate_default_model() -> str:
     if not all_models:
         raise HTTPException(status_code=500, detail="No registered models are available for debate mode")
 
-    return all_models[0]["model_id"]
+    return all_models[0]["model_ref"]
 
 
 def validate_resolved_models(
@@ -149,6 +151,19 @@ def validate_resolved_models(
             ProviderRegistry.find_provider_for_model(model_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid {role} model: {model_id}") from exc
+
+
+def normalize_resolved_models(
+    moderator_model: str,
+    expert_model: str,
+    critic_model: str,
+) -> tuple[tuple[str, str], tuple[str, str], tuple[str, str]]:
+    """Resolve provider-qualified refs to (provider, raw_model_id) tuples."""
+    return (
+        resolve_model(moderator_model),
+        resolve_model(expert_model),
+        resolve_model(critic_model),
+    )
 
 
 @router.post("/", response_model=MultiAgentChatResponse)
@@ -175,15 +190,20 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
         # Resolve models
         moderator_model, expert_model, critic_model = resolve_models(request.models)
         validate_resolved_models(moderator_model, expert_model, critic_model)
+        moderator_resolved, expert_resolved, critic_resolved = normalize_resolved_models(
+            moderator_model,
+            expert_model,
+            critic_model,
+        )
 
         # Extract thinking configuration
         thinking = request.thinking or ThinkingConfig()
 
         # Get or create workflow
         workflow = get_workflow(
-            moderator_model=moderator_model,
-            expert_model=expert_model,
-            critic_model=critic_model,
+            moderator_model=moderator_resolved[1],
+            expert_model=expert_resolved[1],
+            critic_model=critic_resolved[1],
             max_iterations=request.max_iterations,
             score_threshold=request.score_threshold,
             thinking_moderator=thinking.moderator,
@@ -199,9 +219,9 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
         return MultiAgentChatResponse(
             conversation_id=conversation_id,
             models=MultiAgentModelConfig(
-                moderator=moderator_model,
-                expert=expert_model,
-                critic=critic_model
+                moderator=ProviderRegistry.build_model_ref(*moderator_resolved),
+                expert=ProviderRegistry.build_model_ref(*expert_resolved),
+                critic=ProviderRegistry.build_model_ref(*critic_resolved),
             ),
             final_answer=result["final_answer"],
             was_direct_answer=result.get("was_direct_answer", False),
@@ -238,6 +258,11 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
     # Resolve models
     moderator_model, expert_model, critic_model = resolve_models(request.models)
     validate_resolved_models(moderator_model, expert_model, critic_model)
+    moderator_resolved, expert_resolved, critic_resolved = normalize_resolved_models(
+        moderator_model,
+        expert_model,
+        critic_model,
+    )
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
     # Extract thinking configuration
@@ -253,9 +278,9 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
         workflow = None
         try:
             workflow = get_workflow(
-                moderator_model=moderator_model,
-                expert_model=expert_model,
-                critic_model=critic_model,
+                moderator_model=moderator_resolved[1],
+                expert_model=expert_resolved[1],
+                critic_model=critic_resolved[1],
                 max_iterations=request.max_iterations,
                 score_threshold=request.score_threshold,
                 thinking_moderator=thinking.moderator,
@@ -314,8 +339,8 @@ async def multi_agent_chat_stream(http_request: Request, request: MultiAgentChat
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
             "X-Run-ID": run_context.run_id,
-            "X-Moderator-Model": moderator_model,
-            "X-Expert-Model": expert_model,
-            "X-Critic-Model": critic_model
+            "X-Moderator-Model": moderator_resolved[1],
+            "X-Expert-Model": expert_resolved[1],
+            "X-Critic-Model": critic_resolved[1]
         }
     )

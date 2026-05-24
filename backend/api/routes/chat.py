@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.api.schemas import ChatRequest, ChatResponse
+from backend.api.model_refs import resolve_model
 from backend.api.run_control import CANCELLATION_MESSAGE, persist_cancellation_notice, run_manager
 from backend.core.agent import LangGraphAgent
 from backend.core.run_manager import RunCancelledError
@@ -17,6 +18,7 @@ from backend.storage import get_storage
 from backend.config import settings
 from backend.providers.registry import ProviderRegistry
 from backend.utils.errors import sanitize_error_message
+from backend.utils.conversation_mode import record_used_mode
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -49,8 +51,10 @@ async def get_agent(model_id: str, thinking: bool = False, web_search: bool = Fa
     """
     global _agents, _storage
 
+    provider_name, raw_model_id = resolve_model(model_id)
+
     # Key includes thinking mode and web search since they affect the agent behavior
-    agent_key = f"{model_id}:{thinking}:{web_search}"
+    agent_key = f"{provider_name}:{raw_model_id}:{thinking}:{web_search}"
 
     if agent_key not in _agents:
         tools = []
@@ -58,7 +62,8 @@ async def get_agent(model_id: str, thinking: bool = False, web_search: bool = Fa
             tools = await get_web_search_tools()
 
         _agents[agent_key] = LangGraphAgent(
-            model_id=model_id,
+            model_id=raw_model_id,
+            provider_name=provider_name,
             storage=_storage,
             thinking=thinking,
             tools=tools
@@ -83,6 +88,7 @@ async def chat(request: ChatRequest):
 
     try:
         model_id = request.model or settings.default_model
+        _, raw_model_id = resolve_model(model_id)
         thinking = request.thinking if request.thinking is not None else False
         web_search = request.web_search or False
         agent = await get_agent(model_id, thinking, web_search)
@@ -93,7 +99,7 @@ async def chat(request: ChatRequest):
         return ChatResponse(
             response=response,
             conversation_id=conversation_id,
-            model=model_id
+            model=raw_model_id
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=sanitize_error_message(e))
@@ -115,6 +121,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
 
     conversation_id = request.conversation_id or str(uuid.uuid4())
     model_id = request.model or settings.default_model
+    _, raw_model_id = resolve_model(model_id)
     thinking = request.thinking if request.thinking is not None else False
     web_search = request.web_search or False
 
@@ -164,7 +171,7 @@ async def chat_stream(http_request: Request, request: ChatRequest):
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
             "X-Run-ID": run_context.run_id,
-            "X-Model-ID": model_id
+            "X-Model-ID": raw_model_id
         }
     )
 
@@ -185,9 +192,10 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
 
     conversation_id = request.conversation_id or str(uuid.uuid4())
     model_id = request.model or "gemini-2.5-flash-image"
+    provider_name, raw_model_id = resolve_model(model_id)
 
     try:
-        provider_name, provider = ProviderRegistry.find_provider_for_model(model_id)
+        provider = ProviderRegistry.get_provider(provider_name)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_id}")
 
@@ -208,7 +216,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
             if not conversation:
                 await _storage.create_conversation(
                     conversation_id=conversation_id,
-                    model=model_id,
+                    model=raw_model_id,
                     mode="image",
                     title=request.message[:60],
                 )
@@ -234,7 +242,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
 
             async for event in provider.generate(
                 messages,
-                model_id,
+                raw_model_id,
                 api_key,
                 base_url=base_url,
                 aspect_ratio=request.aspect_ratio,
@@ -263,9 +271,10 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                 conversation_id=conversation_id,
                 role="assistant",
                 content=assistant_content,
-                model=model_id,
+                model=raw_model_id,
                 message_type="image_response",
             )
+            await record_used_mode(_storage, conversation_id, "image")
 
         except asyncio.CancelledError:
             await run_context.cancel()
@@ -290,6 +299,6 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
             "Connection": "keep-alive",
             "X-Conversation-ID": conversation_id,
             "X-Run-ID": run_context.run_id,
-            "X-Model-ID": model_id,
+            "X-Model-ID": raw_model_id,
         }
     )

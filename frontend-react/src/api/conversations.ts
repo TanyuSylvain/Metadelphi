@@ -10,12 +10,14 @@ export interface ConversationsListResponse {
 
 export interface ConversationHistoryResponse {
   conversation_id: string
+  mode?: 'simple' | 'debate' | 'coworking'
   messages: Array<{
     role: string
     content: string
     timestamp: string
     model?: string
     message_type?: string
+    iteration?: number
     metadata?: Record<string, unknown>
   }>
 }
@@ -47,6 +49,10 @@ export function historyToMessages(
     .filter((m) => m.role !== 'system')
     .map((m, i) => {
       const metrics = m.metadata?.metrics as Message['metrics'] | undefined
+      const isDebateAnswer =
+        m.message_type === 'final_answer' &&
+        Array.isArray((m.metadata?.metrics as { model_ids?: unknown } | undefined)?.model_ids)
+
       // Strip embedded metadata markers from stored content
       const content = m.content
         .replace(/\n?\n?<!--METRICS_JSON[\s\S]*?METRICS_JSON-->/g, '')
@@ -56,6 +62,8 @@ export function historyToMessages(
       let type: Message['type'] = 'assistant'
       if (m.role === 'user') {
         type = 'user'
+      } else if (isDebateAnswer) {
+        type = 'debate'
       } else if (m.message_type === 'final_answer') {
         type = 'assistant'
       }
@@ -68,6 +76,7 @@ export function historyToMessages(
         timestamp: m.timestamp,
         model: m.model,
         metrics,
+        debateRound: isDebateAnswer ? m.iteration : undefined,
       }
     })
 }

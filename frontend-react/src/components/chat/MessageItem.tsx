@@ -14,7 +14,7 @@ interface Props {
 
 function UserMessage({ content }: { content: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '2px 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 16px' }}>
       <div
         style={{
           maxWidth: '72%',
@@ -41,7 +41,7 @@ function AssistantMessage({
   markdownEnabled: boolean
 }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '2px 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '6px 16px' }}>
       <div
         style={{
           position: 'relative',
@@ -87,9 +87,10 @@ function DebateMessage({
   onDebateClick?: (debateId: string, round: number) => void
 }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '2px 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '6px 16px' }}>
       <div
         style={{
+          position: 'relative',
           maxWidth: '78%',
           padding: '12px 15px',
           background: '#fff',
@@ -100,8 +101,8 @@ function DebateMessage({
           transition: 'border-color 0.15s, box-shadow 0.15s',
         }}
         onClick={() => {
-          if (onDebateClick && message.debateId != null && message.debateRound != null) {
-            onDebateClick(message.debateId, message.debateRound)
+          if (onDebateClick && message.debateRound != null) {
+            onDebateClick(message.debateId ?? '', message.debateRound)
           }
         }}
         onMouseEnter={(e) => {
@@ -116,6 +117,11 @@ function DebateMessage({
           el.style.boxShadow = '0 2px 6px rgba(108,99,255,0.08)'
         }}
       >
+        {!message.isStreaming && (
+          <div className="msg-copy-btn">
+            <CopyButton content={message.content} />
+          </div>
+        )}
         <Space size={8} style={{ marginBottom: 8 }}>
           <Tag
             style={{
@@ -135,10 +141,8 @@ function DebateMessage({
           )}
         </Space>
         <MarkdownContent content={message.content} markdownEnabled={markdownEnabled} />
-        {!message.isStreaming && (
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-            <CopyButton content={message.content} />
-          </div>
+        {!message.isStreaming && message.metrics && (
+          <MetricsBar metrics={message.metrics} model={message.model} />
         )}
       </div>
     </div>
@@ -147,7 +151,7 @@ function DebateMessage({
 
 function ImageMessage({ message }: { message: Message }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '2px 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '6px 16px' }}>
       <div
         style={{
           maxWidth: '78%',
@@ -215,7 +219,7 @@ function ImageMessage({ message }: { message: Message }) {
 
 function CoworkingMessage({ message, markdownEnabled }: { message: Message; markdownEnabled: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '2px 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '6px 16px' }}>
       <div
         style={{
           maxWidth: '80%',

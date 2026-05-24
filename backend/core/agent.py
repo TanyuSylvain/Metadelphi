@@ -27,6 +27,7 @@ from backend.utils.parallel_tools import (
     execute_tools_parallel,
 )
 from backend.utils.metrics import MetricsCollector, strip_metrics_metadata
+from backend.utils.conversation_mode import record_used_mode
 from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,7 @@ class LangGraphAgent:
                         model=self.model_id,
                         metadata={"metrics": result.to_dict()}
                     )
+                    await record_used_mode(self.storage, conversation_id, "simple")
         else:
             # Original simple streaming path
             full_response = ""
@@ -213,6 +215,7 @@ class LangGraphAgent:
                         model=self.model_id,
                         metadata={"metrics": result.to_dict()} if result is not None else {}
                     )
+                    await record_used_mode(self.storage, conversation_id, "simple")
 
     async def _stream_with_tools(
         self,

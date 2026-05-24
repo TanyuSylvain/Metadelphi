@@ -32,6 +32,7 @@ from backend.tools.workspace_tools import create_workspace_tools
 from backend.tools.web_search import get_web_search_tools
 from backend.core.coworking_prompts import COWORKING_SYSTEM_PROMPT, COWORKING_PLANNING_PROMPT
 from backend.utils.metrics import MetricsCollector
+from backend.utils.conversation_mode import record_used_mode
 from backend.core.run_manager import RunCancelledError, RunContext, use_run_context
 
 logger = logging.getLogger(__name__)
@@ -373,6 +374,10 @@ class CoworkingAgent:
         if is_new_conversation:
             title = question[:50] + "..." if len(question) > 50 else question
             await self.storage.update_conversation_title(conversation_id, title)
+            await self.storage.update_conversation_metadata(
+                conversation_id,
+                {"mode": "coworking"}
+            )
 
         session_state = await ensure_coworking_session_state(
             storage=self.storage,
@@ -674,6 +679,7 @@ class CoworkingAgent:
                         model=self.model_id,
                         metadata={"metrics": metrics_dict} if metrics_dict else {}
                     )
+                    await record_used_mode(self.storage, conversation_id, "coworking")
                     assistant_saved = True
 
                 final_file_state = await recompute_coworking_session_deltas(
@@ -720,6 +726,7 @@ class CoworkingAgent:
                     content=TextProcessor.convert_math_delimiters(final_response),
                     model=self.model_id
                 )
+                await record_used_mode(self.storage, conversation_id, "coworking")
             if not file_state_recomputed:
                 await recompute_coworking_session_deltas(
                     storage=self.storage,

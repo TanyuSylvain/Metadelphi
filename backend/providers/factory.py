@@ -47,6 +47,8 @@ class ProviderFactory:
         if temperature is None:
             temperature = settings.model_temperature
 
+        _, raw_model_id = ProviderRegistry.parse_model_ref(model_id)
+
         # Auto-detect provider if not specified
         if provider_name is None:
             provider_name, provider = ProviderRegistry.find_provider_for_model(model_id)
@@ -71,7 +73,7 @@ class ProviderFactory:
 
         # Initialize the LLM
         llm = provider.initialize(
-            model_id=model_id,
+            model_id=raw_model_id,
             api_key=api_key,
             temperature=temperature,
             max_tokens=32000,
@@ -82,11 +84,11 @@ class ProviderFactory:
         if json_mode and not thinking_enabled:
             try:
                 llm = llm.bind(response_format={"type": "json_object"})
-                logger.info(f"LLM bound with JSON mode: {model_id}")
+                logger.info(f"LLM bound with JSON mode: {raw_model_id}")
             except Exception as e:
-                logger.warning(f"JSON mode not supported for {model_id}, using default: {e}")
+                logger.warning(f"JSON mode not supported for {raw_model_id}, using default: {e}")
         elif json_mode and thinking_enabled:
-            logger.info(f"JSON mode skipped for {model_id} (thinking enabled) - use convert_to_json() for post-processing")
+            logger.info(f"JSON mode skipped for {raw_model_id} (thinking enabled) - use convert_to_json() for post-processing")
 
         return llm
 
@@ -139,6 +141,7 @@ class ProviderFactory:
                     "provider": provider_id,
                     "provider_name": provider.get_provider_name(),
                     "model_id": model_id,
+                    "model_ref": ProviderRegistry.build_model_ref(provider_id, model_id),
                     "model_name": model["name"],
                     "description": model["description"],
                     "supports_thinking": provider.supports_thinking(model_id),

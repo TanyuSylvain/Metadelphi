@@ -62,6 +62,7 @@ class ModelInfo(BaseModel):
     provider: str = Field(..., description="Provider ID")
     provider_name: str = Field(..., description="Human-readable provider name")
     model_id: str = Field(..., description="Model ID")
+    model_ref: str = Field(..., description="Provider-qualified model reference")
     model_name: str = Field(..., description="Model display name")
     description: str = Field(..., description="Model description")
     supports_thinking: bool = Field(False, description="Whether thinking mode can be enabled")
@@ -108,6 +109,7 @@ class MessageInfo(BaseModel):
     timestamp: str = Field(..., description="Message timestamp")
     model: Optional[str] = Field(None, description="Model used (for assistant messages)")
     message_type: Optional[str] = Field(None, description="Message type (e.g. final_answer, moderator_init)")
+    iteration: Optional[int] = Field(None, description="Debate iteration number for debate-related messages")
     metadata: Optional[Dict] = Field(default=None, description="Message metadata including metrics")
 
 

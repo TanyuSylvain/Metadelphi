@@ -26,7 +26,11 @@ export default function MultiAgentConfigPanel({ config, models, onChange }: Prop
     }
     return Object.entries(byProvider).map(([name, ms]) => ({
       label: name,
-      options: ms.map((m) => ({ value: m.model_id, label: m.model_name })),
+      options: ms.map((m) => ({
+        value: m.model_ref,
+        label: m.model_name,
+        searchLabel: `${m.provider_name} ${m.model_name} ${m.model_id}`,
+      })),
     }))
   }, [models])
 
@@ -40,11 +44,23 @@ export default function MultiAgentConfigPanel({ config, models, onChange }: Prop
 
   const currentModelSupportsThinking = (role: 'moderator' | 'expert' | 'critic') => {
     const modelId = config[role]
-    const model = models.find((m) => m.model_id === modelId)
+    const model = models.find((m) => m.model_ref === modelId)
     return model?.supports_thinking ?? false
   }
 
-  const summary = `${config.moderator || '—'} · ${config.expert || '—'} · ${config.critic || '—'}`
+  const formatHeaderModelName = (modelRef?: string) => {
+    if (!modelRef) return '—'
+    const model = models.find((m) => m.model_ref === modelRef)
+    if (model?.model_name) return model.model_name
+    const [, ...rest] = modelRef.split('/')
+    return rest.length > 0 ? rest.join('/') : modelRef
+  }
+
+  const summary = [
+    formatHeaderModelName(config.moderator),
+    formatHeaderModelName(config.expert),
+    formatHeaderModelName(config.critic),
+  ].join(' · ')
 
   return (
     <Collapse
@@ -100,9 +116,7 @@ export default function MultiAgentConfigPanel({ config, models, onChange }: Prop
                       style={{ width: '100%', marginBottom: 8 }}
                       size="small"
                       showSearch
-                      filterOption={(input, opt) =>
-                        String(opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
+                      optionFilterProp="searchLabel"
                     />
                     <Space size={6} align="center">
                       <Switch

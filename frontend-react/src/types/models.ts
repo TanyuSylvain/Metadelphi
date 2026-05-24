@@ -2,6 +2,7 @@ export interface Model {
   provider: string
   provider_name: string
   model_id: string
+  model_ref: string
   model_name: string
   description: string
   supports_thinking: boolean
@@ -36,5 +37,8 @@ export interface ConversationInfo {
   updated_at: string
   message_count: number
   title: string
-  metadata: Record<string, unknown>
+  metadata: {
+    mode_history?: string[]
+    [key: string]: unknown
+  }
 }

@@ -36,9 +36,10 @@ export default function ModelSelect({
     return Object.entries(byProvider).map(([providerName, providerModels]) => ({
       label: providerName,
       options: providerModels.map((m) => ({
-        value: m.model_id,
+        value: m.model_ref,
         label: m.model_name,
         title: m.description,
+        searchLabel: `${m.provider_name} ${m.model_name} ${m.model_id}`,
       })),
     }))
   }, [models, imageMode, configuredProviders])
@@ -52,9 +53,7 @@ export default function ModelSelect({
       disabled={disabled}
       style={{ minWidth: 200 }}
       showSearch
-      filterOption={(input, option) =>
-        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-      }
+      optionFilterProp="searchLabel"
       size="middle"
     />
   )
