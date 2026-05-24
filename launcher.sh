@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Metadelphi Launcher Script
-# This script starts both the backend and frontend servers
+# This script starts the backend server, which also serves the built React frontend
 
 cd "$(dirname "$0")"
 
@@ -35,6 +35,13 @@ if [ ! -f ".env" ]; then
     echo "Please configure your API keys by copying .env.template to .env"
     echo "Opening configuration wizard..."
     .venv/bin/python installer/config_wizard.py
+fi
+
+if [ ! -f "frontend/dist-react/index.html" ]; then
+    echo "Error: Built React frontend not found at frontend/dist-react/index.html"
+    echo "Build it first with:"
+    echo "  cd frontend-react && npm install && npm run build"
+    exit 1
 fi
 
 open_browser() {

@@ -184,7 +184,7 @@ fi
 echo "  - Run: ./launcher.sh"
 echo ""
 echo "The application will open in your default browser at:"
-echo "  http://localhost:8080/index.html"
+echo "  http://localhost:8000/"
 echo "To enable auto-start later, run:"
 echo "  ./setup_service.sh"
 echo ""

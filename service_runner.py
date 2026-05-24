@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Supervise the Metadelphi backend and frontend for background service usage.
+Supervise the Metadelphi backend for background service usage.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from typing import Optional
 
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_PORT = 8000
-FRONTEND_PORT = 8080
 
 
 def get_state_dir() -> Path:
@@ -44,7 +43,6 @@ PID_FILE = STATE_DIR / "service.pid"
 CHILDREN_FILE = STATE_DIR / "children.json"
 SUPERVISOR_LOG = LOG_DIR / "service.log"
 BACKEND_LOG = LOG_DIR / "backend.log"
-FRONTEND_LOG = LOG_DIR / "frontend.log"
 
 
 def ensure_runtime_dirs() -> None:
@@ -97,11 +95,10 @@ def write_pid_file() -> None:
     PID_FILE.write_text(f"{os.getpid()}\n", encoding="utf-8")
 
 
-def write_children_file(backend_pid: int, frontend_pid: int) -> None:
+def write_children_file(backend_pid: int) -> None:
     ensure_runtime_dirs()
     payload = {
         "backend_pid": backend_pid,
-        "frontend_pid": frontend_pid,
     }
     CHILDREN_FILE.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -124,7 +121,7 @@ def service_running() -> bool:
     if pid and not process_exists(pid):
         cleanup_pid_files()
 
-    return is_port_open(BACKEND_PORT) and is_port_open(FRONTEND_PORT)
+    return is_port_open(BACKEND_PORT)
 
 
 def managed_supervisor_running() -> bool:
@@ -166,8 +163,8 @@ def stop_service() -> int:
         cleanup_pid_files()
         return 0
 
-    if is_port_open(BACKEND_PORT) or is_port_open(FRONTEND_PORT):
-        print("Ports are in use, but no managed Metadelphi service supervisor was found.")
+    if is_port_open(BACKEND_PORT):
+        print("Port 8000 is in use, but no managed Metadelphi service supervisor was found.")
         return 1
 
     print("Metadelphi service is not running.")
@@ -178,7 +175,6 @@ def stop_service() -> int:
 def print_status(quiet: bool = False) -> int:
     pid = read_pid()
     backend_ready = is_port_open(BACKEND_PORT)
-    frontend_ready = is_port_open(FRONTEND_PORT)
 
     if pid and not process_exists(pid):
         cleanup_pid_files()
@@ -186,13 +182,13 @@ def print_status(quiet: bool = False) -> int:
 
     if pid and process_exists(pid):
         if not quiet:
-            status = "ready" if backend_ready and frontend_ready else "starting"
+            status = "ready" if backend_ready else "starting"
             print(f"Metadelphi service supervisor is running (pid {pid}, status: {status}).")
         return 0
 
-    if backend_ready and frontend_ready:
+    if backend_ready:
         if not quiet:
-            print("Metadelphi is already reachable on ports 8000 and 8080.")
+            print("Metadelphi is already reachable on port 8000.")
         return 0
 
     if not quiet:
@@ -222,25 +218,16 @@ def run_supervisor() -> int:
         return 0
 
     backend_ready = is_port_open(BACKEND_PORT)
-    frontend_ready = is_port_open(FRONTEND_PORT)
-    if backend_ready or frontend_ready:
-        if backend_ready and frontend_ready:
-            log("Ports 8000 and 8080 are already in use; not starting a duplicate service.")
-            return 0
-
-        log("Port conflict detected while starting Metadelphi; one required port is already in use.")
+    if backend_ready:
+        log("Port 8000 is already in use; not starting a duplicate service.")
         return 0
 
     write_pid_file()
     backend_log_handle = BACKEND_LOG.open("a", buffering=1)
-    frontend_log_handle = FRONTEND_LOG.open("a", buffering=1)
     backend_proc: Optional[subprocess.Popen[bytes]] = None
-    frontend_proc: Optional[subprocess.Popen[bytes]] = None
 
     def shutdown(signum: int, _frame: object) -> None:
         log(f"Received signal {signum}; shutting down Metadelphi service.")
-        if frontend_proc is not None:
-            terminate_process(frontend_proc, "frontend")
         if backend_proc is not None:
             terminate_process(backend_proc, "backend")
         cleanup_pid_files()
@@ -251,7 +238,6 @@ def run_supervisor() -> int:
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    frontend_dir = APP_DIR / "frontend" / "src"
 
     try:
         log("Starting Metadelphi backend service.")
@@ -263,35 +249,14 @@ def run_supervisor() -> int:
             stderr=subprocess.STDOUT,
         )
 
-        log("Starting Metadelphi frontend service.")
-        frontend_proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "http.server",
-                str(FRONTEND_PORT),
-                "--directory",
-                str(frontend_dir),
-            ],
-            cwd=APP_DIR,
-            env=env,
-            stdout=frontend_log_handle,
-            stderr=subprocess.STDOUT,
-        )
-
-        write_children_file(backend_proc.pid, frontend_proc.pid)
+        write_children_file(backend_proc.pid)
 
         deadline = time.time() + 15
         while time.time() < deadline:
             if backend_proc.poll() is not None:
                 log(f"Backend exited during startup with code {backend_proc.returncode}.")
-                terminate_process(frontend_proc, "frontend")
                 return 1
-            if frontend_proc.poll() is not None:
-                log(f"Frontend exited during startup with code {frontend_proc.returncode}.")
-                terminate_process(backend_proc, "backend")
-                return 1
-            if is_port_open(BACKEND_PORT) and is_port_open(FRONTEND_PORT):
+            if is_port_open(BACKEND_PORT):
                 break
             time.sleep(0.5)
 
@@ -299,20 +264,13 @@ def run_supervisor() -> int:
 
         while True:
             if backend_proc.poll() is not None:
-                log(f"Backend exited with code {backend_proc.returncode}; stopping frontend.")
-                terminate_process(frontend_proc, "frontend")
+                log(f"Backend exited with code {backend_proc.returncode}.")
                 return backend_proc.returncode or 1
-
-            if frontend_proc.poll() is not None:
-                log(f"Frontend exited with code {frontend_proc.returncode}; stopping backend.")
-                terminate_process(backend_proc, "backend")
-                return frontend_proc.returncode or 1
 
             time.sleep(1)
 
     finally:
         backend_log_handle.close()
-        frontend_log_handle.close()
         cleanup_pid_files()
 
 

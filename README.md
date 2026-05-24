@@ -58,7 +58,7 @@ A powerful, cross-platform application for comparing and interacting with multip
 - ✅ Optionally registers a per-user auto-start service at login
 - ✅ Opens the application in your browser automatically
 
-The application will be available at: **http://localhost:8080/index.html**
+The application will be available at: **http://localhost:8000/**
 
 If you skip auto-start during installation, you can enable it later with:
 - **Windows**: `setup_service.bat`
@@ -282,7 +282,7 @@ launcher.bat
 ```
 
 The application will open automatically in your browser at:
-**http://localhost:8080/index.html**
+**http://localhost:8000/**
 
 ---
 
@@ -389,28 +389,16 @@ backend/
 └── utils/                           # Utility functions
 ```
 
-### Frontend (Vanilla JS)
+### Frontend (React/Vite)
 
 ```
-frontend/src/
-├── index.html                       # Main HTML page
-├── app.js                           # Application entry point
-├── components/
-│   ├── ModelSelector.js             # Model selection dropdown
-│   ├── Sidebar.js                   # Conversation history sidebar
-│   ├── MessageComponent.js          # Chat message rendering (syntax highlighting)
-│   ├── ModeSelector.js              # Simple/Debate/Coworking mode toggle
-│   ├── MultiAgentConfig.js          # Debate configuration panel
-│   ├── DebateViewer.js              # Real-time debate visualization
-│   ├── ModeratorAnalysisViewer.js   # Moderator insights display
-│   ├── CoworkingConfig.js           # Workspace path selector (NEW)
-│   └── ToolExecutionViewer.js       # Coworking tool calls & file tracker (NEW)
-├── utils/
-│   ├── api.js                       # API client wrapper
-│   ├── helpers.js                   # Helper functions
-│   ├── markdown.js                  # Markdown rendering
-│   └── smartScroller.js             # Smart auto-scroll utility (NEW)
-└── styles/                          # CSS stylesheets
+frontend-react/
+├── src/                             # React application source
+├── index.html                       # Vite HTML entry point
+├── package.json                     # Frontend scripts and dependencies
+└── vite.config.ts                   # Builds into frontend/dist-react
+
+frontend/dist-react/                 # Built frontend served by FastAPI
 ```
 
 ### Installation System
@@ -512,7 +500,7 @@ chmod +x install.sh launcher.sh
 ### Runtime Issues
 
 **Problem: Port already in use**
-- Check if ports 8000 or 8080 are occupied
+- Check if port 8000 is occupied
 - Stop conflicting services
 - Change ports in `backend/config.py` if needed
 
@@ -523,14 +511,14 @@ chmod +x install.sh launcher.sh
 - Test API key with provider's official tools
 
 **Problem: Browser doesn't open automatically**
-- Manually navigate to http://localhost:8080/index.html
+- Manually navigate to http://localhost:8000/
 - Check firewall settings
-- Verify both backend and frontend servers started
+- Verify the backend started successfully
 
 **Problem: Streaming responses not working**
 - Check browser console for errors (F12)
 - Verify backend is running on port 8000
-- Check CORS settings if accessing from different domain
+- Verify the React frontend has been built into `frontend/dist-react`
 
 **Problem: Models not appearing**
 - Ensure at least one API key is configured
@@ -608,13 +596,14 @@ pip install -r requirements.txt
 cp .env.template .env
 # Add your API keys
 
-# Run backend in development mode
-cd backend
-python -m uvicorn main:app --reload --port 8000
+# Build the React frontend
+cd frontend-react
+npm install
+npm run build
 
-# In another terminal, serve frontend
-cd frontend/src
-python -m http.server 8080
+# Run backend in development mode from the repo root
+cd ..
+python -m backend.main
 ```
 
 ---

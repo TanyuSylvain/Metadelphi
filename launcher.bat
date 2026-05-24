@@ -1,6 +1,6 @@
 @echo off
 REM Metadelphi Launcher Script
-REM This script starts both the backend and frontend servers
+REM This script starts the backend server, which also serves the built React frontend
 
 cd /d "%~dp0"
 
@@ -37,10 +37,18 @@ if not exist ".env" (
     %PYTHON_CMD% installer\config_wizard.py
 )
 
+if not exist "frontend\dist-react\index.html" (
+    echo Error: Built React frontend not found at frontend\dist-react\index.html
+    echo Build it first with:
+    echo   cd frontend-react ^&^& npm install ^&^& npm run build
+    pause
+    exit /b 1
+)
+
 %PYTHON_CMD% service_runner.py status --quiet >nul 2>&1
 if not errorlevel 1 (
     echo Metadelphi is already running in the background.
-    start http://localhost:8080/index.html
+    start http://localhost:8000/
     exit /b 0
 )
 
@@ -48,24 +56,19 @@ echo Starting Metadelphi...
 echo ===================
 
 REM Start backend server
-echo Starting backend server on port 8000...
+echo Starting server on port 8000...
 start /B %PYTHON_CMD% -m backend.main
 timeout /t 2 /nobreak >nul
-
-REM Start frontend server
-echo Starting frontend server on port 8080...
-start /B %PYTHON_CMD% -m http.server 8080 --directory frontend\src
-timeout /t 1 /nobreak >nul
 
 echo.
 echo Metadelphi is running!
 echo ===================
-echo Backend API: http://localhost:8000
-echo Frontend:    http://localhost:8080/index.html
+echo App:         http://localhost:8000/
+echo Backend API: http://localhost:8000/docs
 echo.
 
 REM Open browser
-start http://localhost:8080/index.html
+start http://localhost:8000/
 
 echo Press Ctrl+C or close this window to stop the application
 echo.

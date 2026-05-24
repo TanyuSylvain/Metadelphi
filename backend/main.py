@@ -40,6 +40,11 @@ _DIST_REACT = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist-re
 if os.path.isdir(_DIST_REACT):
     app.mount("/", StaticFiles(directory=_DIST_REACT, html=True), name="frontend")
 else:
+    print(
+        "Built React frontend not found at frontend/dist-react. "
+        "Build it with 'cd frontend-react && npm install && npm run build'."
+    )
+
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/docs")

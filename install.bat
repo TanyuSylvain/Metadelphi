@@ -173,7 +173,7 @@ echo   - Use the "Metadelphi" shortcut on your desktop, or
 echo   - Run: launcher.bat
 echo.
 echo The application will open in your default browser at:
-echo   http://localhost:8080/index.html
+echo   http://localhost:8000/
 echo To enable auto-start later, run:
 echo   setup_service.bat
 echo.
