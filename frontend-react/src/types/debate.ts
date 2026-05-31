@@ -29,6 +29,12 @@ export interface CriticReview {
 export interface ModeratorSynthesis {
   decision: string
   analysis: string
+  feedback_validation?: {
+    valid_issues?: string[]
+    invalid_issues?: string[]
+  }
+  improvement_guidance?: string
+  iteration_summary?: string
 }
 
 export interface DebateIteration {

@@ -4,7 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useDebateStore } from '../store/debateStore'
 import { generateUUID } from '../utils/uuid'
 import type { MultiAgentChatRequest } from '../types/api'
-import type { ExpertAnswer, CriticReview, ModeratorInit, DebatePhase, TerminationReason } from '../types/debate'
+import type { ExpertAnswer, CriticReview, ModeratorInit, ModeratorSynthesis, DebatePhase, TerminationReason } from '../types/debate'
 import type { StreamMetrics } from '../types/messages'
 
 async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Record<string, unknown>> {
@@ -86,6 +86,12 @@ export function useDebateStream() {
               event.review as CriticReview,
             )
             break
+
+          case 'moderator_synthesize': {
+            const synthesis = event.analysis as ModeratorSynthesis | undefined
+            if (synthesis) debateStore.setSynthesis(event.iteration as number, synthesis)
+            break
+          }
 
           case 'iteration_complete':
             debateStore.completeIteration(event.iteration as number)

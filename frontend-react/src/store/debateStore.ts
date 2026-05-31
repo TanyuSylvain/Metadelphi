@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DebateIteration, ModeratorInit, DebatePhase, TerminationReason } from '../types/debate'
-import type { ExpertAnswer, CriticReview } from '../types/debate'
+import type { ExpertAnswer, CriticReview, ModeratorSynthesis } from '../types/debate'
 
 interface DebateState {
   currentDebateId: string | null
@@ -18,6 +18,7 @@ interface DebateState {
   setPhase: (phase: DebatePhase, iteration: number) => void
   setExpertAnswer: (iteration: number, answer: ExpertAnswer) => void
   setCriticReview: (iteration: number, review: CriticReview) => void
+  setSynthesis: (iteration: number, synthesis: ModeratorSynthesis) => void
   completeIteration: (iteration: number) => void
   setDirectAnswer: () => void
   finishDebate: (termination: TerminationReason, total: number) => void
@@ -70,6 +71,13 @@ export const useDebateStore = create<DebateState>((set) => ({
     set((s) => ({
       iterations: s.iterations.map((i) =>
         i.round === iteration ? { ...i, critic: review } : i,
+      ),
+    })),
+
+  setSynthesis: (iteration, synthesis) =>
+    set((s) => ({
+      iterations: s.iterations.map((i) =>
+        i.round === iteration ? { ...i, synthesis } : i,
       ),
     })),
 
