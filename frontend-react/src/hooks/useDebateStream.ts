@@ -27,18 +27,28 @@ async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Reco
 }
 
 export function useDebateStream() {
-  const appStore = useAppStore()
-  const chatStore = useChatStore()
-  const debateStore = useDebateStore()
+  const beginRun = useAppStore((s) => s.beginRun)
+  const setActiveRunId = useAppStore((s) => s.setActiveRunId)
+  const resetRun = useAppStore((s) => s.resetRun)
+  const addMessage = useChatStore((s) => s.addMessage)
+  const startDebate = useDebateStore((s) => s.startDebate)
+  const setPhase = useDebateStore((s) => s.setPhase)
+  const setModeratorInit = useDebateStore((s) => s.setModeratorInit)
+  const setExpertAnswer = useDebateStore((s) => s.setExpertAnswer)
+  const setCriticReview = useDebateStore((s) => s.setCriticReview)
+  const setSynthesis = useDebateStore((s) => s.setSynthesis)
+  const completeIteration = useDebateStore((s) => s.completeIteration)
+  const setDirectAnswer = useDebateStore((s) => s.setDirectAnswer)
+  const finishDebate = useDebateStore((s) => s.finishDebate)
 
   const start = useCallback(async (req: MultiAgentChatRequest) => {
     const controller = new AbortController()
-    appStore.beginRun(controller)
+    beginRun(controller)
 
     const debateId = generateUUID()
-    debateStore.startDebate(debateId)
+    startDebate(debateId)
 
-    chatStore.addMessage({
+    addMessage({
       id: generateUUID(),
       type: 'user',
       role: 'user',
@@ -56,12 +66,12 @@ export function useDebateStream() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const runId = res.headers.get('X-Run-ID')
-      if (runId) appStore.setActiveRunId(runId)
+      if (runId) setActiveRunId(runId)
 
       for await (const event of readSSE(res, controller.signal)) {
         switch (event.type) {
           case 'phase_start':
-            debateStore.setPhase(
+            setPhase(
               event.phase as DebatePhase,
               (event.iteration as number) ?? 1,
             )
@@ -69,19 +79,19 @@ export function useDebateStream() {
 
           case 'moderator_init': {
             const init = event.analysis as ModeratorInit | undefined
-            if (init) debateStore.setModeratorInit(init)
+            if (init) setModeratorInit(init)
             break
           }
 
           case 'expert_answer':
-            debateStore.setExpertAnswer(
+            setExpertAnswer(
               event.iteration as number,
               event.answer as ExpertAnswer,
             )
             break
 
           case 'critic_review':
-            debateStore.setCriticReview(
+            setCriticReview(
               event.iteration as number,
               event.review as CriticReview,
             )
@@ -89,12 +99,12 @@ export function useDebateStream() {
 
           case 'moderator_synthesize': {
             const synthesis = event.analysis as ModeratorSynthesis | undefined
-            if (synthesis) debateStore.setSynthesis(event.iteration as number, synthesis)
+            if (synthesis) setSynthesis(event.iteration as number, synthesis)
             break
           }
 
           case 'iteration_complete':
-            debateStore.completeIteration(event.iteration as number)
+            completeIteration(event.iteration as number)
             break
 
           case 'done': {
@@ -102,10 +112,10 @@ export function useDebateStream() {
             const termination = event.termination_reason as TerminationReason
             const total = event.total_iterations as number
             const metrics = event.metrics as StreamMetrics | undefined
-            if (event.was_direct_answer) debateStore.setDirectAnswer()
-            debateStore.finishDebate(termination, total)
+            if (event.was_direct_answer) setDirectAnswer()
+            finishDebate(termination, total)
 
-            chatStore.addMessage({
+            addMessage({
               id: generateUUID(),
               type: 'debate',
               role: 'assistant',
@@ -119,7 +129,7 @@ export function useDebateStream() {
           }
 
           case 'error':
-            chatStore.addMessage({
+            addMessage({
               id: generateUUID(),
               type: 'error',
               role: 'assistant',
@@ -130,7 +140,7 @@ export function useDebateStream() {
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        chatStore.addMessage({
+        addMessage({
           id: generateUUID(),
           type: 'error',
           role: 'assistant',
@@ -138,9 +148,23 @@ export function useDebateStream() {
         })
       }
     } finally {
-      appStore.resetRun()
+      resetRun()
     }
-  }, [appStore, chatStore, debateStore])
+  }, [
+    beginRun,
+    setActiveRunId,
+    resetRun,
+    addMessage,
+    startDebate,
+    setPhase,
+    setModeratorInit,
+    setExpertAnswer,
+    setCriticReview,
+    setSynthesis,
+    completeIteration,
+    setDirectAnswer,
+    finishDebate,
+  ])
 
   return { start }
 }

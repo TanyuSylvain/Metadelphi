@@ -29,12 +29,86 @@ import SettingsDrawer from './components/settings/SettingsDrawer'
 
 const { Sider, Header, Content } = Layout
 
+interface MessagesPaneProps {
+  messagesRef: React.RefObject<HTMLDivElement>
+  messagesContentRef: React.RefObject<HTMLDivElement>
+  markdownEnabled: boolean
+  scrollToBottom: () => void
+  onDebateClick: (debateId: string, round: number) => void
+}
+
+const MessagesPane = React.memo(function MessagesPane({
+  messagesRef,
+  messagesContentRef,
+  markdownEnabled,
+  scrollToBottom,
+  onDebateClick,
+}: MessagesPaneProps) {
+  const messages = useChatStore((s) => s.messages)
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  return (
+    <div
+      ref={messagesRef}
+      style={{
+        flex: 1,
+        overflow: 'auto',
+        paddingTop: 12,
+        paddingBottom: 12,
+      }}
+    >
+      <div ref={messagesContentRef} style={{ minHeight: '100%' }}>
+        {messages.length === 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: '#9ca3af',
+            }}
+          >
+            <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🧠</div>
+            <Typography.Text style={{ fontSize: 16, color: '#9ca3af' }}>
+              Start a conversation
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 13, marginTop: 6 }}>
+              Select a model and send a message
+            </Typography.Text>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <MessageItem
+              key={msg.id}
+              message={msg}
+              markdownEnabled={markdownEnabled}
+              onDebateClick={onDebateClick}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  )
+})
+
 export default function App() {
   const prefs = usePrefsStore()
-  const appStore = useAppStore()
-  const chatStore = useChatStore()
-  const debateStore = useDebateStore()
-  const { workspacePath, setWorkspacePath } = useCoworkingStore()
+  const resetDebate = useDebateStore((s) => s.reset)
+  const setExpandedDebateCard = useDebateStore((s) => s.setExpandedCard)
+  const workspacePath = useCoworkingStore((s) => s.workspacePath)
+  const setWorkspacePath = useCoworkingStore((s) => s.setWorkspacePath)
+  const isProcessing = useAppStore((s) => s.isProcessing)
+  const settingsOpen = useAppStore((s) => s.settingsOpen)
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
+  const cancelRun = useAppStore((s) => s.cancel)
+  const conversationId = useChatStore((s) => s.conversationId)
+  const setConversationId = useChatStore((s) => s.setConversationId)
+  const setMessages = useChatStore((s) => s.setMessages)
+  const clearMessages = useChatStore((s) => s.clearMessages)
 
   const { models, loading: modelsLoading } = useModels()
   const { conversations, loading: convsLoading, reload: reloadConvs, deleteConversation, deleteAll } = useConversations()
@@ -45,7 +119,8 @@ export default function App() {
   const imageStream = useImageStream()
 
   const messagesRef = useRef<HTMLDivElement>(null)
-  const { scrollToBottom, resetScroll } = useSmartScroll(messagesRef)
+  const messagesContentRef = useRef<HTMLDivElement>(null)
+  const { scrollToBottom, resetScroll } = useSmartScroll(messagesRef, messagesContentRef)
 
   const resolveModelRef = useCallback((value: string) => {
     if (!value) return ''
@@ -57,10 +132,12 @@ export default function App() {
     return ''
   }, [models])
 
-  // Scroll to bottom when messages change during streaming
-  useEffect(() => {
-    scrollToBottom()
-  }, [chatStore.messages, scrollToBottom])
+  const resolveThinkingEnabled = useCallback((modelRef: string) => {
+    const model = models.find((m) => m.model_ref === modelRef)
+    if (!model?.supports_thinking) return false
+    if (model.thinking_locked) return true
+    return prefs.thinkingEnabledByModel[modelRef] ?? true
+  }, [models, prefs.thinkingEnabledByModel])
 
   // Migrate persisted legacy raw model IDs to provider-qualified refs when possible.
   useEffect(() => {
@@ -121,30 +198,30 @@ export default function App() {
 
   // Load conversation history when switching conversations
   const loadConversation = useCallback(async (id: string) => {
-    chatStore.setConversationId(id)
-    chatStore.clearMessages()
-    debateStore.reset()
+    setConversationId(id)
+    clearMessages()
+    resetDebate()
     try {
       const history = await conversationsApi.get(id)
-      chatStore.setMessages(historyToMessages(history))
+      setMessages(historyToMessages(history))
       resetScroll()
     } catch {
-      chatStore.setMessages([])
+      setMessages([])
     }
-  }, [chatStore, debateStore, resetScroll])
+  }, [setConversationId, clearMessages, setMessages, resetDebate, resetScroll])
 
   const handleNewConversation = () => {
     const id = generateUUID()
-    chatStore.setConversationId(id)
-    chatStore.clearMessages()
-    debateStore.reset()
+    setConversationId(id)
+    clearMessages()
+    resetDebate()
   }
 
   const handleModeChange = async (newMode: typeof prefs.chatMode) => {
-    if (appStore.isProcessing) return
+    if (isProcessing) return
     prefs.setChatMode(newMode)
     try {
-      await conversationsApi.switchMode(chatStore.conversationId, { target_mode: newMode })
+      await conversationsApi.switchMode(conversationId, { target_mode: newMode })
     } catch {
       // Mode switch can fail if conversation doesn't exist yet — that's fine
     }
@@ -161,7 +238,7 @@ export default function App() {
     if (prefs.chatMode === 'debate') {
       await debateStream.start({
         message: text,
-        conversation_id: chatStore.conversationId,
+        conversation_id: conversationId,
         models: {
           moderator: prefs.multiAgentConfig.moderator || undefined,
           expert: prefs.multiAgentConfig.expert || undefined,
@@ -182,10 +259,10 @@ export default function App() {
       }
       await cwStream.start({
         message: text,
-        conversation_id: chatStore.conversationId,
+        conversation_id: conversationId,
         model: prefs.selectedModel,
         workspace_path: workspacePath,
-        thinking: prefs.isThinkingEnabled(prefs.selectedModel),
+        thinking: resolveThinkingEnabled(prefs.selectedModel),
         web_search: prefs.webSearchEnabled,
       })
       reloadConvs()
@@ -195,7 +272,7 @@ export default function App() {
     if (prefs.imageModeEnabled) {
       await imageStream.start({
         message: text,
-        conversation_id: chatStore.conversationId,
+        conversation_id: conversationId,
         model: prefs.selectedModel,
         aspect_ratio: prefs.imageAspectRatio,
       })
@@ -205,13 +282,13 @@ export default function App() {
 
     await simpleStream.start({
       message: text,
-      conversation_id: chatStore.conversationId,
+      conversation_id: conversationId,
       model: prefs.selectedModel,
-      thinking: prefs.isThinkingEnabled(prefs.selectedModel),
+      thinking: resolveThinkingEnabled(prefs.selectedModel),
       web_search: prefs.webSearchEnabled,
     })
     reloadConvs()
-  }, [prefs, chatStore, appStore, simpleStream, debateStream, cwStream, imageStream, resetScroll, reloadConvs, workspacePath])
+  }, [prefs, conversationId, isProcessing, simpleStream, debateStream, cwStream, imageStream, resetScroll, reloadConvs, workspacePath, resolveThinkingEnabled])
 
   // Sidebar resize
   const [sidebarDragging, setSidebarDragging] = useState(false)
@@ -246,6 +323,10 @@ export default function App() {
     (prefs.chatMode === 'debate' && prefs.debatePanelVisible) ||
     prefs.chatMode === 'coworking'
 
+  const handleDebateMessageClick = useCallback((_debateId: string, round: number) => {
+    setExpandedDebateCard(round)
+  }, [setExpandedDebateCard])
+
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Sidebar */}
@@ -266,7 +347,7 @@ export default function App() {
             <ConversationList
               conversations={conversations}
               loading={convsLoading}
-              currentId={chatStore.conversationId}
+              currentId={conversationId}
               onSelect={loadConversation}
               onNew={handleNewConversation}
               onDelete={deleteConversation}
@@ -309,7 +390,7 @@ export default function App() {
           <ModeSegmented
             value={prefs.chatMode}
             onChange={handleModeChange}
-            disabled={appStore.isProcessing}
+            disabled={isProcessing}
           />
 
           {prefs.chatMode !== 'debate' && (
@@ -318,7 +399,7 @@ export default function App() {
               value={prefs.selectedModel}
               onChange={prefs.setSelectedModel}
               imageMode={prefs.imageModeEnabled}
-              disabled={modelsLoading || appStore.isProcessing}
+              disabled={modelsLoading || isProcessing}
             />
           )}
 
@@ -326,20 +407,20 @@ export default function App() {
             mode={prefs.chatMode}
             selectedModel={prefs.selectedModel}
             models={models}
-            thinkingEnabled={prefs.isThinkingEnabled(prefs.selectedModel)}
+            thinkingEnabled={resolveThinkingEnabled(prefs.selectedModel)}
             markdownEnabled={prefs.markdownEnabled}
             webSearchEnabled={prefs.webSearchEnabled}
             imageModeEnabled={prefs.imageModeEnabled}
             imageAspectRatio={prefs.imageAspectRatio}
             debatePanelVisible={prefs.debatePanelVisible}
-            isProcessing={appStore.isProcessing}
+            isProcessing={isProcessing}
             onThinkingChange={(v) => prefs.setThinkingEnabled(prefs.selectedModel, v)}
             onMarkdownChange={prefs.setMarkdownEnabled}
             onWebSearchChange={prefs.setWebSearchEnabled}
             onImageModeChange={prefs.setImageModeEnabled}
             onAspectRatioChange={prefs.setImageAspectRatio}
             onDebatePanelChange={prefs.setDebatePanelVisible}
-            onSettingsClick={() => appStore.setSettingsOpen(true)}
+            onSettingsClick={() => setSettingsOpen(true)}
           />
         </Header>
 
@@ -376,51 +457,19 @@ export default function App() {
             }}
           >
             {/* Messages */}
-            <div
-              ref={messagesRef as React.RefObject<HTMLDivElement>}
-              style={{
-                flex: 1,
-                overflow: 'auto',
-                paddingTop: 12,
-                paddingBottom: 12,
-              }}
-            >
-              {chatStore.messages.length === 0 ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    color: '#9ca3af',
-                  }}
-                >
-                  <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🧠</div>
-                  <Typography.Text style={{ fontSize: 16, color: '#9ca3af' }}>
-                    Start a conversation
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 13, marginTop: 6 }}>
-                    Select a model and send a message
-                  </Typography.Text>
-                </div>
-              ) : (
-                chatStore.messages.map((msg) => (
-                  <MessageItem
-                    key={msg.id}
-                    message={msg}
-                    markdownEnabled={prefs.markdownEnabled}
-                    onDebateClick={(_debateId, round) => debateStore.setExpandedCard(round)}
-                  />
-                ))
-              )}
-            </div>
+            <MessagesPane
+              messagesRef={messagesRef}
+              messagesContentRef={messagesContentRef}
+              markdownEnabled={prefs.markdownEnabled}
+              scrollToBottom={scrollToBottom}
+              onDebateClick={handleDebateMessageClick}
+            />
 
             {/* Input */}
             <MessageInput
               onSend={handleSend}
-              onCancel={appStore.cancel}
-              isProcessing={appStore.isProcessing}
+              onCancel={cancelRun}
+              isProcessing={isProcessing}
               placeholder={
                 prefs.chatMode === 'debate'
                   ? 'Send a question to the debate agents…'
@@ -459,8 +508,8 @@ export default function App() {
 
       {/* Settings drawer */}
       <SettingsDrawer
-        open={appStore.settingsOpen}
-        onClose={() => appStore.setSettingsOpen(false)}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </Layout>
   )

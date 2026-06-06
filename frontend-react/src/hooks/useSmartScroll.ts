@@ -1,43 +1,78 @@
 import { useRef, useCallback, useEffect, RefObject } from 'react'
 
-export function useSmartScroll(containerRef: RefObject<HTMLElement | null>) {
-  const userScrolledUp = useRef(false)
+const BOTTOM_THRESHOLD_PX = 60
+
+export function useSmartScroll(
+  containerRef: RefObject<HTMLElement | null>,
+  contentRef?: RefObject<HTMLElement | null>,
+) {
+  const autoFollow = useRef(true)
+  const scrollFrame = useRef<number | null>(null)
+
+  const isNearBottom = useCallback((el: HTMLElement) => (
+    el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD_PX
+  ), [])
+
+  const scrollElementToBottom = useCallback((el: HTMLElement) => {
+    el.scrollTop = el.scrollHeight
+  }, [])
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
-    const onWheel = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-      if (!atBottom) userScrolledUp.current = true
+    const updateAutoFollow = () => {
+      scrollFrame.current = null
+      autoFollow.current = isNearBottom(el)
     }
 
     const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-      if (atBottom) userScrolledUp.current = false
+      if (scrollFrame.current != null) {
+        window.cancelAnimationFrame(scrollFrame.current)
+      }
+      scrollFrame.current = window.requestAnimationFrame(updateAutoFollow)
     }
 
-    el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      el.removeEventListener('wheel', onWheel)
+      if (scrollFrame.current != null) {
+        window.cancelAnimationFrame(scrollFrame.current)
+        scrollFrame.current = null
+      }
       el.removeEventListener('scroll', onScroll)
     }
-  }, [containerRef])
+  }, [containerRef, isNearBottom])
+
+  useEffect(() => {
+    const el = containerRef.current
+    const content = contentRef?.current
+    if (!el || !content || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(() => {
+      if (autoFollow.current) {
+        scrollElementToBottom(el)
+      }
+    })
+
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [containerRef, contentRef, scrollElementToBottom])
 
   const scrollToBottom = useCallback((force = false) => {
-    if (!containerRef.current) return
-    if (force || !userScrolledUp.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    const el = containerRef.current
+    if (!el) return
+    if (force || autoFollow.current || isNearBottom(el)) {
+      autoFollow.current = true
+      scrollElementToBottom(el)
     }
-  }, [containerRef])
+  }, [containerRef, isNearBottom, scrollElementToBottom])
 
   const resetScroll = useCallback(() => {
-    userScrolledUp.current = false
+    autoFollow.current = true
     if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+      scrollElementToBottom(containerRef.current)
     }
-  }, [containerRef])
+  }, [containerRef, scrollElementToBottom])
 
   return { scrollToBottom, resetScroll }
 }

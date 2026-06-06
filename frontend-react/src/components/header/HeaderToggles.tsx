@@ -47,6 +47,7 @@ export default function HeaderToggles({
   const currentModel = models.find((m) => m.model_ref === selectedModel)
   const supportsThinking = currentModel?.supports_thinking ?? false
   const thinkingLocked = currentModel?.thinking_locked ?? false
+  const effectiveThinkingEnabled = supportsThinking && (thinkingLocked || thinkingEnabled)
 
   const isSimple = mode === 'simple'
   const isDebate = mode === 'debate'
@@ -89,7 +90,7 @@ export default function HeaderToggles({
             <span>
               <ToggleItem
                 label="Thinking"
-                checked={thinkingEnabled}
+                checked={effectiveThinkingEnabled}
                 onChange={onThinkingChange}
                 disabled={!supportsThinking}
                 locked={thinkingLocked}

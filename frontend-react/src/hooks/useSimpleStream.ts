@@ -6,6 +6,8 @@ import type { ChatRequest } from '../types/api'
 import type { StreamMetrics, Citation } from '../types/messages'
 import { generateUUID } from '../utils/uuid'
 
+const STREAM_FLUSH_MS = 250
+
 async function* readSSE(
   res: Response,
   signal: AbortSignal,
@@ -33,16 +35,18 @@ async function* readSSE(
 }
 
 export function useSimpleStream() {
-  const appStore = useAppStore()
-  const chatStore = useChatStore()
+  const beginRun = useAppStore((s) => s.beginRun)
+  const setActiveRunId = useAppStore((s) => s.setActiveRunId)
+  const resetRun = useAppStore((s) => s.resetRun)
+  const addMessage = useChatStore((s) => s.addMessage)
 
   const start = useCallback(
     async (req: ChatRequest) => {
       const controller = new AbortController()
-      appStore.beginRun(controller)
+      beginRun(controller)
 
       // Add user message
-      chatStore.addMessage({
+      addMessage({
         id: generateUUID(),
         type: 'user',
         role: 'user',
@@ -57,6 +61,37 @@ export function useSimpleStream() {
       }))
 
       let accContent = ''
+      let lastFlushedContent = ''
+      let flushTimer: ReturnType<typeof window.setTimeout> | null = null
+
+      const flushContent = () => {
+        if (accContent === lastFlushedContent) return
+        lastFlushedContent = accContent
+        useChatStore.setState((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === msgId ? { ...m, content: accContent } : m,
+          ),
+        }))
+      }
+
+      const clearFlushTimer = () => {
+        if (flushTimer == null) return
+        window.clearTimeout(flushTimer)
+        flushTimer = null
+      }
+
+      const flushContentNow = () => {
+        clearFlushTimer()
+        flushContent()
+      }
+
+      const scheduleContentFlush = () => {
+        if (flushTimer != null) return
+        flushTimer = window.setTimeout(() => {
+          flushTimer = null
+          flushContent()
+        }, STREAM_FLUSH_MS)
+      }
 
       try {
         const res = await fetch('/chat/stream', {
@@ -69,17 +104,14 @@ export function useSimpleStream() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
         const runId = res.headers.get('X-Run-ID')
-        if (runId) appStore.setActiveRunId(runId)
+        if (runId) setActiveRunId(runId)
 
         for await (const event of readSSE(res, controller.signal)) {
           if (event.type === 'chunk') {
             accContent += event.content as string
-            useChatStore.setState((s) => ({
-              messages: s.messages.map((m) =>
-                m.id === msgId ? { ...m, content: accContent } : m,
-              ),
-            }))
+            scheduleContentFlush()
           } else if (event.type === 'done') {
+            flushContentNow()
             // Extract metadata
             const { citations, clean: c1 } = extractCitations(accContent)
             const { metrics, clean: c2 } = extractMetrics(c1)
@@ -101,6 +133,7 @@ export function useSimpleStream() {
               streamingMessageId: null,
             }))
           } else if (event.type === 'error') {
+            flushContentNow()
             useChatStore.setState((s) => ({
               messages: s.messages.map((m) =>
                 m.id === msgId
@@ -110,6 +143,7 @@ export function useSimpleStream() {
               streamingMessageId: null,
             }))
           } else if (event.type === 'cancelled') {
+            flushContentNow()
             useChatStore.setState((s) => ({
               messages: s.messages.map((m) =>
                 m.id === msgId ? { ...m, isStreaming: false } : m,
@@ -120,6 +154,7 @@ export function useSimpleStream() {
         }
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
+          flushContentNow()
           useChatStore.setState((s) => ({
             messages: s.messages.map((m) =>
               m.id === msgId ? { ...m, isStreaming: false } : m,
@@ -127,6 +162,7 @@ export function useSimpleStream() {
             streamingMessageId: null,
           }))
         } else {
+          flushContentNow()
           useChatStore.setState((s) => ({
             messages: s.messages.map((m) =>
               m.id === msgId
@@ -137,10 +173,11 @@ export function useSimpleStream() {
           }))
         }
       } finally {
-        appStore.resetRun()
+        clearFlushTimer()
+        resetRun()
       }
     },
-    [appStore, chatStore],
+    [beginRun, setActiveRunId, resetRun, addMessage],
   )
 
   return { start }

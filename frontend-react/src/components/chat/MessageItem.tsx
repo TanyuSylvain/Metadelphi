@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Alert, Image, Space, Tag, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import type { Message } from '../../types/messages'
@@ -254,7 +255,7 @@ function CoworkingMessage({ message, markdownEnabled }: { message: Message; mark
   )
 }
 
-export default function MessageItem({ message, markdownEnabled, onDebateClick }: Props) {
+function MessageItem({ message, markdownEnabled, onDebateClick }: Props) {
   switch (message.type) {
     case 'user':
       return <UserMessage content={message.content} />
@@ -298,3 +299,5 @@ export default function MessageItem({ message, markdownEnabled, onDebateClick }:
       return null
   }
 }
+
+export default memo(MessageItem)

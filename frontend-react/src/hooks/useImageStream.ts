@@ -25,14 +25,16 @@ async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Reco
 }
 
 export function useImageStream() {
-  const appStore = useAppStore()
-  const chatStore = useChatStore()
+  const beginRun = useAppStore((s) => s.beginRun)
+  const setActiveRunId = useAppStore((s) => s.setActiveRunId)
+  const resetRun = useAppStore((s) => s.resetRun)
+  const addMessage = useChatStore((s) => s.addMessage)
 
   const start = useCallback(async (req: ChatRequest) => {
     const controller = new AbortController()
-    appStore.beginRun(controller)
+    beginRun(controller)
 
-    chatStore.addMessage({
+    addMessage({
       id: generateUUID(),
       type: 'user',
       role: 'user',
@@ -61,7 +63,7 @@ export function useImageStream() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const runId = res.headers.get('X-Run-ID')
-      if (runId) appStore.setActiveRunId(runId)
+      if (runId) setActiveRunId(runId)
 
       for await (const event of readSSE(res, controller.signal)) {
         if (event.type === 'text_chunk') {
@@ -119,9 +121,9 @@ export function useImageStream() {
         }))
       }
     } finally {
-      appStore.resetRun()
+      resetRun()
     }
-  }, [appStore, chatStore])
+  }, [beginRun, setActiveRunId, resetRun, addMessage])
 
   return { start }
 }

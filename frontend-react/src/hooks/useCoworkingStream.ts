@@ -25,16 +25,28 @@ async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Reco
 }
 
 export function useCoworkingStream() {
-  const appStore = useAppStore()
-  const chatStore = useChatStore()
-  const cwStore = useCoworkingStore()
+  const beginRun = useAppStore((s) => s.beginRun)
+  const setActiveRunId = useAppStore((s) => s.setActiveRunId)
+  const resetRun = useAppStore((s) => s.resetRun)
+  const addMessage = useChatStore((s) => s.addMessage)
+  const resetCoworking = useCoworkingStore((s) => s.reset)
+  const setPlanSteps = useCoworkingStore((s) => s.setPlanSteps)
+  const startRound = useCoworkingStore((s) => s.startRound)
+  const appendReasoning = useCoworkingStore((s) => s.appendReasoning)
+  const startTool = useCoworkingStore((s) => s.startTool)
+  const finishTool = useCoworkingStore((s) => s.finishTool)
+  const failTool = useCoworkingStore((s) => s.failTool)
+  const completeRound = useCoworkingStore((s) => s.completeRound)
+  const addGeneratedFile = useCoworkingStore((s) => s.addGeneratedFile)
+  const addDeletedFile = useCoworkingStore((s) => s.addDeletedFile)
+  const appendFinalAnswer = useCoworkingStore((s) => s.appendFinalAnswer)
 
   const start = useCallback(async (req: CoworkingChatRequest) => {
     const controller = new AbortController()
-    appStore.beginRun(controller)
-    cwStore.reset()
+    beginRun(controller)
+    resetCoworking()
 
-    chatStore.addMessage({
+    addMessage({
       id: generateUUID(),
       type: 'user',
       role: 'user',
@@ -64,25 +76,25 @@ export function useCoworkingStream() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const runId = res.headers.get('X-Run-ID')
-      if (runId) appStore.setActiveRunId(runId)
+      if (runId) setActiveRunId(runId)
 
       for await (const event of readSSE(res, controller.signal)) {
         switch (event.type) {
           case 'plan_ready':
-            if (Array.isArray(event.plan)) cwStore.setPlanSteps(event.plan as string[])
+            if (Array.isArray(event.plan)) setPlanSteps(event.plan as string[])
             break
 
           case 'round_start':
             currentRound = event.round as number
-            cwStore.startRound(currentRound)
+            startRound(currentRound)
             break
 
           case 'reasoning_chunk':
-            cwStore.appendReasoning(currentRound, event.content as string)
+            appendReasoning(currentRound, event.content as string)
             break
 
           case 'tool_start': {
-            const toolId = cwStore.startTool(
+            const toolId = startTool(
               currentRound,
               event.tool_name as string,
               (event.tool_input as Record<string, unknown>) ?? {},
@@ -96,9 +108,9 @@ export function useCoworkingStream() {
             if (toolId) {
               const output = String(event.output ?? '')
               if (event.success) {
-                cwStore.finishTool(currentRound, toolId, output)
+                finishTool(currentRound, toolId, output)
               } else {
-                cwStore.failTool(currentRound, toolId, output)
+                failTool(currentRound, toolId, output)
               }
               delete activeToolIds[event.tool_call_id as string]
             }
@@ -106,19 +118,19 @@ export function useCoworkingStream() {
           }
 
           case 'round_complete':
-            cwStore.completeRound(currentRound, 'done')
+            completeRound(currentRound, 'done')
             break
 
           case 'file_created':
-            cwStore.addGeneratedFile({ path: event.file_path as string, size: event.file_size as number | undefined })
+            addGeneratedFile({ path: event.file_path as string, size: event.file_size as number | undefined })
             break
 
           case 'file_deleted':
-            cwStore.addDeletedFile(event.file_path as string)
+            addDeletedFile(event.file_path as string)
             break
 
           case 'final_chunk':
-            cwStore.appendFinalAnswer(event.content as string)
+            appendFinalAnswer(event.content as string)
             break
 
           case 'done': {
@@ -163,9 +175,25 @@ export function useCoworkingStream() {
         }))
       }
     } finally {
-      appStore.resetRun()
+      resetRun()
     }
-  }, [appStore, chatStore, cwStore])
+  }, [
+    beginRun,
+    setActiveRunId,
+    resetRun,
+    addMessage,
+    resetCoworking,
+    setPlanSteps,
+    startRound,
+    appendReasoning,
+    startTool,
+    finishTool,
+    failTool,
+    completeRound,
+    addGeneratedFile,
+    addDeletedFile,
+    appendFinalAnswer,
+  ])
 
   return { start }
 }
