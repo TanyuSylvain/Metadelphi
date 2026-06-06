@@ -60,8 +60,19 @@ export function historyToMessages(
         .trim()
 
       let type: Message['type'] = 'assistant'
+      let displayContent = content
+      let images: Message['images'] | undefined
       if (m.role === 'user') {
         type = 'user'
+      } else if (m.message_type === 'image_response') {
+        try {
+          const parsed = JSON.parse(content) as { text?: string; images?: Message['images'] }
+          type = 'image'
+          displayContent = parsed.text ?? ''
+          images = Array.isArray(parsed.images) ? parsed.images : []
+        } catch {
+          type = 'image'
+        }
       } else if (isDebateAnswer) {
         type = 'debate'
       } else if (m.message_type === 'final_answer') {
@@ -72,10 +83,11 @@ export function historyToMessages(
         id: `hist-${i}`,
         type,
         role: m.role as 'user' | 'assistant',
-        content,
+        content: displayContent,
         timestamp: m.timestamp,
         model: m.model,
         metrics,
+        images,
         debateRound: isDebateAnswer ? m.iteration : undefined,
       }
     })

@@ -3,7 +3,14 @@ Pydantic schemas for API request and response models.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Literal, Optional, List, Dict
+
+
+class ImageEditSource(BaseModel):
+    """Source image payload for image edit requests."""
+    data: str = Field(..., description="Base64-encoded image data")
+    mime_type: str = Field(default="image/png", description="Source image MIME type")
+    index: Optional[int] = Field(None, description="Image index in the source response")
 
 
 class ChatRequest(BaseModel):
@@ -14,6 +21,14 @@ class ChatRequest(BaseModel):
     thinking: Optional[bool] = Field(None, description="Enable thinking mode for models that support it")
     web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
     aspect_ratio: Optional[str] = Field(None, description="Aspect ratio for image generation (e.g. 1:1, 16:9)")
+    image_action: Optional[Literal["generate", "edit"]] = Field(
+        None,
+        description="Explicit image action. If omitted, image mode may auto-detect generate vs edit.",
+    )
+    edit_source_image: Optional[ImageEditSource] = Field(
+        None,
+        description="Source image to edit when image_action is edit.",
+    )
 
     class Config:
         json_schema_extra = {

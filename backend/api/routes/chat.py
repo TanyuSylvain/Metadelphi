@@ -7,6 +7,7 @@ import json
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+import httpx
 
 from backend.api.schemas import ChatRequest, ChatResponse
 from backend.api.model_refs import resolve_model
@@ -22,6 +23,9 @@ from backend.utils.conversation_mode import record_used_mode
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+IMAGE_INTENT_CLASSIFIER_MODEL = "gpt-5.4-mini"
+IMAGE_INTENT_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75
+
 # Shared storage instance for all agents
 _storage = get_storage(
     backend=settings.storage_backend,
@@ -35,6 +39,112 @@ _agents: dict[str, LangGraphAgent] = {}
 def _format_sse_event(event: dict) -> str:
     """Serialize a stream event as SSE."""
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+def _latest_image_from_history(history: list[dict]) -> dict | None:
+    """Return the most recent generated image payload from stored history."""
+    for msg in reversed(history):
+        if msg.get("role") != "assistant":
+            continue
+        try:
+            parsed = json.loads(msg.get("content", ""))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        images = parsed.get("images")
+        if not isinstance(images, list) or not images:
+            continue
+        latest = images[-1]
+        if isinstance(latest, dict) and latest.get("data"):
+            return {
+                "data": latest.get("data", ""),
+                "mime_type": latest.get("mime_type", "image/png"),
+                "index": latest.get("index"),
+            }
+    return None
+
+
+def _parse_classifier_json(text: str) -> dict:
+    """Parse classifier JSON, tolerating models that wrap it in prose."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(text[start:end + 1])
+        raise
+
+
+async def _classify_image_intent(prompt: str) -> dict:
+    """
+    Classify whether an image-mode follow-up should create a new image or edit
+    the latest generated image. Fail closed to generation.
+    """
+    api_key = settings.get_api_key("openai")
+    if not api_key:
+        return {"action": "generate", "reason": "classifier_api_key_missing"}
+
+    base = (settings.get_base_url("openai") or "https://api.openai.com/v1").rstrip("/")
+    endpoint = f"{base}/chat/completions"
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Classify the user's next image-mode prompt. "
+                "Return JSON only with: intent ('generate_new', 'edit_previous', or 'unclear'), "
+                "confidence (0 to 1), and reason. "
+                "Use edit_previous only when the user clearly asks to change, adjust, revise, "
+                "remove, add to, restyle, or otherwise modify the latest generated image."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+    body = {
+        "model": IMAGE_INTENT_CLASSIFIER_MODEL,
+        "messages": messages,
+        "max_completion_tokens": 120,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(endpoint, json=body, headers=headers)
+            if response.status_code == 400:
+                fallback_body = {
+                    "model": IMAGE_INTENT_CLASSIFIER_MODEL,
+                    "messages": messages,
+                    "max_tokens": 120,
+                }
+                response = await client.post(endpoint, json=fallback_body, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        parsed = _parse_classifier_json(content)
+        intent = str(parsed.get("intent", "unclear"))
+        confidence = float(parsed.get("confidence", 0))
+        if intent == "edit_previous" and confidence >= IMAGE_INTENT_CLASSIFIER_CONFIDENCE_THRESHOLD:
+            return {
+                "action": "edit",
+                "reason": "classifier",
+                "classifier_model": IMAGE_INTENT_CLASSIFIER_MODEL,
+                "confidence": confidence,
+            }
+        return {
+            "action": "generate",
+            "reason": "classifier_generate_or_unclear",
+            "classifier_model": IMAGE_INTENT_CLASSIFIER_MODEL,
+            "confidence": confidence,
+        }
+    except Exception as e:
+        return {
+            "action": "generate",
+            "reason": "classifier_failed",
+            "classifier_model": IMAGE_INTENT_CLASSIFIER_MODEL,
+            "error": sanitize_error_message(e, default="Intent classification failed."),
+        }
 
 
 async def get_agent(model_id: str, thinking: bool = False, web_search: bool = False) -> LangGraphAgent:
@@ -182,6 +292,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
     Send a prompt to an image generation model and get an SSE response.
 
     Streams Server-Sent Events with the following event types:
+    - {"type": "image_routing", "image_action": "generate"|"edit", ...}
     - {"type": "text_chunk", "content": "..."}  — text description
     - {"type": "image", "data": "<base64>", "mime_type": "image/png", "index": N}
     - {"type": "done"}
@@ -226,16 +337,62 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                     {"mode": "image"}
                 )
 
-            # Load history for multi-turn support
+            # Load history for multi-turn support and fallback edit detection
             history = await _storage.get_messages(conversation_id)
             messages = provider.build_messages(history, request.message)
+
+            latest_history_image = _latest_image_from_history(history)
+            edit_source_image = request.edit_source_image.model_dump() if request.edit_source_image else None
+            routing = {
+                "image_action": "generate",
+                "routing_reason": "default_generate",
+            }
+
+            if request.image_action == "edit":
+                edit_source_image = edit_source_image or latest_history_image
+                routing = {
+                    "image_action": "edit" if edit_source_image else "generate",
+                    "routing_reason": "explicit_user_selection" if edit_source_image else "explicit_edit_without_source",
+                }
+            elif request.image_action == "generate":
+                routing = {
+                    "image_action": "generate",
+                    "routing_reason": "explicit_generate",
+                }
+            elif latest_history_image and provider_name == "openai_image":
+                classifier_result = await _classify_image_intent(request.message)
+                if classifier_result.get("action") == "edit":
+                    edit_source_image = latest_history_image
+                    routing = {
+                        "image_action": "edit",
+                        "routing_reason": "classifier",
+                        "classifier_model": classifier_result.get("classifier_model"),
+                        "confidence": classifier_result.get("confidence"),
+                    }
+                else:
+                    routing = {
+                        "image_action": "generate",
+                        "routing_reason": classifier_result.get("reason", "classifier_generate_or_unclear"),
+                        "classifier_model": classifier_result.get("classifier_model"),
+                        "confidence": classifier_result.get("confidence"),
+                        "classifier_error": classifier_result.get("error"),
+                    }
+
+            if routing["image_action"] == "edit" and provider_name != "openai_image":
+                yield _format_sse_event({
+                    "type": "error",
+                    "message": "Image editing is currently supported only by the OpenAI image provider.",
+                })
+                return
 
             # Persist user message
             await _storage.add_message(
                 conversation_id=conversation_id,
                 role="user",
                 content=request.message,
+                metadata={"image_routing": routing},
             )
+            yield _format_sse_event({"type": "image_routing", **routing})
 
             text_acc = []
             image_acc = []
@@ -246,6 +403,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                 api_key,
                 base_url=base_url,
                 aspect_ratio=request.aspect_ratio,
+                edit_source_image=edit_source_image if routing["image_action"] == "edit" else None,
             ):
                 if await http_request.is_disconnected():
                     await run_context.cancel()
@@ -255,7 +413,11 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                 if event_type == "text_chunk":
                     text_acc.append(event.get("content", ""))
                 elif event_type == "image":
-                    image_acc.append({"data": event.get("data", ""), "mime_type": event.get("mime_type", "image/png")})
+                    image_acc.append({
+                        "data": event.get("data", ""),
+                        "mime_type": event.get("mime_type", "image/png"),
+                        "index": event.get("index"),
+                    })
                 elif event_type == "error":
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                     return
@@ -273,6 +435,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                 content=assistant_content,
                 model=raw_model_id,
                 message_type="image_response",
+                metadata={"image_routing": routing},
             )
             await record_used_mode(_storage, conversation_id, "image")
 

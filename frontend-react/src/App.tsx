@@ -26,6 +26,7 @@ import MessageInput from './components/input/MessageInput'
 import DebatePanel from './components/debate/DebatePanel'
 import CoworkingPanel from './components/coworking/CoworkingPanel'
 import SettingsDrawer from './components/settings/SettingsDrawer'
+import type { ImageEditSource } from './types/messages'
 
 const { Sider, Header, Content } = Layout
 
@@ -35,6 +36,8 @@ interface MessagesPaneProps {
   markdownEnabled: boolean
   scrollToBottom: () => void
   onDebateClick: (debateId: string, round: number) => void
+  selectedImageEditSourceId?: string | null
+  onImageEditToggle: (source: ImageEditSource) => void
 }
 
 const MessagesPane = React.memo(function MessagesPane({
@@ -43,6 +46,8 @@ const MessagesPane = React.memo(function MessagesPane({
   markdownEnabled,
   scrollToBottom,
   onDebateClick,
+  selectedImageEditSourceId,
+  onImageEditToggle,
 }: MessagesPaneProps) {
   const messages = useChatStore((s) => s.messages)
 
@@ -87,6 +92,8 @@ const MessagesPane = React.memo(function MessagesPane({
               message={msg}
               markdownEnabled={markdownEnabled}
               onDebateClick={onDebateClick}
+              selectedImageEditSourceId={selectedImageEditSourceId}
+              onImageEditToggle={onImageEditToggle}
             />
           ))
         )}
@@ -109,6 +116,9 @@ export default function App() {
   const setConversationId = useChatStore((s) => s.setConversationId)
   const setMessages = useChatStore((s) => s.setMessages)
   const clearMessages = useChatStore((s) => s.clearMessages)
+  const imageEditSource = useChatStore((s) => s.imageEditSource)
+  const setImageEditSource = useChatStore((s) => s.setImageEditSource)
+  const clearImageEditSource = useChatStore((s) => s.clearImageEditSource)
 
   const { models, loading: modelsLoading } = useModels()
   const { conversations, loading: convsLoading, reload: reloadConvs, deleteConversation, deleteAll } = useConversations()
@@ -217,6 +227,11 @@ export default function App() {
     resetDebate()
   }
 
+  const handleImageEditToggle = useCallback((source: ImageEditSource) => {
+    const current = useChatStore.getState().imageEditSource
+    setImageEditSource(current?.id === source.id ? null : source)
+  }, [setImageEditSource])
+
   const handleModeChange = async (newMode: typeof prefs.chatMode) => {
     if (isProcessing) return
     prefs.setChatMode(newMode)
@@ -270,11 +285,23 @@ export default function App() {
     }
 
     if (prefs.imageModeEnabled) {
+      const selectedEditSource = imageEditSource
+      if (selectedEditSource) {
+        clearImageEditSource()
+      }
       await imageStream.start({
         message: text,
         conversation_id: conversationId,
         model: prefs.selectedModel,
         aspect_ratio: prefs.imageAspectRatio,
+        image_action: selectedEditSource ? 'edit' : undefined,
+        edit_source_image: selectedEditSource
+          ? {
+              data: selectedEditSource.data,
+              mime_type: selectedEditSource.mime_type,
+              index: selectedEditSource.index,
+            }
+          : undefined,
       })
       reloadConvs()
       return
@@ -288,7 +315,7 @@ export default function App() {
       web_search: prefs.webSearchEnabled,
     })
     reloadConvs()
-  }, [prefs, conversationId, isProcessing, simpleStream, debateStream, cwStream, imageStream, resetScroll, reloadConvs, workspacePath, resolveThinkingEnabled])
+  }, [prefs, conversationId, isProcessing, simpleStream, debateStream, cwStream, imageStream, resetScroll, reloadConvs, workspacePath, resolveThinkingEnabled, imageEditSource, clearImageEditSource])
 
   // Sidebar resize
   const [sidebarDragging, setSidebarDragging] = useState(false)
@@ -463,6 +490,8 @@ export default function App() {
               markdownEnabled={prefs.markdownEnabled}
               scrollToBottom={scrollToBottom}
               onDebateClick={handleDebateMessageClick}
+              selectedImageEditSourceId={imageEditSource?.id ?? null}
+              onImageEditToggle={handleImageEditToggle}
             />
 
             {/* Input */}
@@ -479,6 +508,8 @@ export default function App() {
                   ? 'Describe the image to generate…'
                   : 'Type a message… (Enter to send)'
               }
+              imageEditSource={imageEditSource}
+              onClearImageEditSource={clearImageEditSource}
             />
           </div>
 

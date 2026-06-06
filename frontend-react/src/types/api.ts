@@ -5,6 +5,12 @@ export interface ChatRequest {
   thinking?: boolean
   web_search?: boolean
   aspect_ratio?: string
+  image_action?: 'generate' | 'edit'
+  edit_source_image?: {
+    data: string
+    mime_type: string
+    index?: number
+  }
 }
 
 export interface MultiAgentModelConfig {

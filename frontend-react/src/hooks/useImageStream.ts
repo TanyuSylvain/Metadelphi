@@ -44,13 +44,20 @@ export function useImageStream() {
     const msgId = generateUUID()
     useChatStore.setState((s) => ({
       messages: [...s.messages, {
-        id: msgId, type: 'image', role: 'assistant', content: '', isStreaming: true, images: [],
+        id: msgId,
+        type: 'image',
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+        images: [],
+        imageAction: req.image_action === 'edit' ? 'edit' : 'generate',
       }],
       streamingMessageId: msgId,
     }))
 
     let textContent = ''
     const images: ImageData[] = []
+    let routedImageAction = req.image_action
 
     try {
       const res = await fetch('/chat/image/stream', {
@@ -84,12 +91,30 @@ export function useImageStream() {
               m.id === msgId ? { ...m, images: [...images] } : m,
             ),
           }))
+        } else if (event.type === 'image_routing') {
+          routedImageAction = event.image_action as typeof routedImageAction
+          const routingReason = event.routing_reason as string | undefined
+          const routingWarning = routingReason === 'classifier_failed'
+            ? 'Intent detection failed; generating a new image.'
+            : ''
+          useChatStore.setState((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === msgId
+                ? {
+                    ...m,
+                    imageAction: routedImageAction === 'edit' ? 'edit' : 'generate',
+                    content: routingWarning || m.content,
+                  }
+                : m,
+            ),
+          }))
         } else if (event.type === 'done') {
           useChatStore.setState((s) => ({
             messages: s.messages.map((m) =>
               m.id === msgId ? { ...m, isStreaming: false } : m,
             ),
             streamingMessageId: null,
+            imageEditSource: null,
           }))
         } else if (event.type === 'error') {
           useChatStore.setState((s) => ({
@@ -99,6 +124,7 @@ export function useImageStream() {
                 : m,
             ),
             streamingMessageId: null,
+            imageEditSource: null,
           }))
         }
       }
@@ -111,6 +137,7 @@ export function useImageStream() {
               : m,
           ),
           streamingMessageId: null,
+          imageEditSource: null,
         }))
       } else {
         useChatStore.setState((s) => ({
@@ -118,6 +145,7 @@ export function useImageStream() {
             m.id === msgId ? { ...m, isStreaming: false } : m,
           ),
           streamingMessageId: null,
+          imageEditSource: null,
         }))
       }
     } finally {

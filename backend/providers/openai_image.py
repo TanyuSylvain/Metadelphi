@@ -1,10 +1,11 @@
 """
 OpenAI Image Generation provider implementation.
 
-Uses the OpenAI-compatible /v1/images/generations endpoint to support
-gpt-image-2 and other OpenAI image models.
+Uses the OpenAI-compatible /v1/images/generations and /v1/images/edits
+endpoints to support gpt-image-2 and other OpenAI image models.
 """
 
+import base64
 import json
 import logging
 from typing import List, Dict, AsyncIterator, Optional
@@ -73,9 +74,10 @@ class OpenAIImageProvider(BaseLLMProvider):
         api_key: str,
         base_url: Optional[str] = None,
         aspect_ratio: Optional[str] = None,
+        edit_source_image: Optional[Dict] = None,
     ) -> AsyncIterator[Dict]:
         """
-        Invoke the image model via OpenAI images/generations endpoint and yield
+        Invoke the image model via OpenAI images endpoint and yield
         SSE-ready event dicts.
 
         Yields dicts with type:
@@ -84,7 +86,6 @@ class OpenAIImageProvider(BaseLLMProvider):
           - {"type": "error", "message": "..."}
         """
         base = base_url.rstrip("/") if base_url else "https://api.openai.com/v1"
-        endpoint = f"{base}/images/generations"
 
         # Extract prompt from the last user message
         prompt = ""
@@ -109,28 +110,39 @@ class OpenAIImageProvider(BaseLLMProvider):
             "response_format": "b64_json",
         }
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {api_key}"}
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(endpoint, json=body, headers=headers)
+                if edit_source_image:
+                    endpoint = f"{base}/images/edits"
+                    image_bytes = base64.b64decode(edit_source_image.get("data", ""))
+                    mime_type = edit_source_image.get("mime_type", "image/png")
+                    files = {
+                        "image": ("source.png", image_bytes, mime_type),
+                    }
+                    response = await client.post(endpoint, data=body, files=files, headers=headers)
+                else:
+                    endpoint = f"{base}/images/generations"
+                    response = await client.post(
+                        endpoint,
+                        json=body,
+                        headers={**headers, "Content-Type": "application/json"},
+                    )
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as e:
             logger.error(f"OpenAI image API HTTP error: {e.response.text}")
             yield {
                 "type": "error",
-                "message": sanitize_error_message(e, default="Image generation failed."),
+                "message": sanitize_error_message(e, default="Image request failed."),
             }
             return
         except Exception as e:
-            logger.error(f"Image generation error: {e}")
+            logger.error(f"Image request error: {e}")
             yield {
                 "type": "error",
-                "message": sanitize_error_message(e, default="Image generation failed."),
+                "message": sanitize_error_message(e, default="Image request failed."),
             }
             return
 

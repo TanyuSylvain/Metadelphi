@@ -1,14 +1,17 @@
 import { create } from 'zustand'
 import { generateUUID } from '../utils/uuid'
-import type { Message, ThinkSegment, Citation, StreamMetrics, ImageData } from '../types/messages'
+import type { Message, ThinkSegment, Citation, StreamMetrics, ImageData, ImageEditSource } from '../types/messages'
 
 interface ChatState {
   conversationId: string
   messages: Message[]
   streamingMessageId: string | null
+  imageEditSource: ImageEditSource | null
 
   setConversationId: (id: string) => void
   setMessages: (msgs: Message[]) => void
+  setImageEditSource: (source: ImageEditSource | null) => void
+  clearImageEditSource: () => void
   addMessage: (msg: Message) => void
   addStreamingPlaceholder: (type?: Message['type']) => string
   appendChunk: (id: string, content: string) => void
@@ -33,9 +36,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversationId: generateUUID(),
   messages: [],
   streamingMessageId: null,
+  imageEditSource: null,
 
-  setConversationId: (id) => set({ conversationId: id }),
+  setConversationId: (id) => set({ conversationId: id, imageEditSource: null }),
   setMessages: (msgs) => set({ messages: msgs }),
+  setImageEditSource: (source) => set({ imageEditSource: source }),
+  clearImageEditSource: () => set({ imageEditSource: null }),
 
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, msg] })),
@@ -103,5 +109,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
-  clearMessages: () => set({ messages: [], streamingMessageId: null }),
+  clearMessages: () => set({ messages: [], streamingMessageId: null, imageEditSource: null }),
 }))

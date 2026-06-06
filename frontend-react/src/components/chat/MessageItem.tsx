@@ -1,7 +1,7 @@
 import { memo } from 'react'
-import { Alert, Image, Space, Tag, Typography } from 'antd'
-import { DownloadOutlined } from '@ant-design/icons'
-import type { Message } from '../../types/messages'
+import { Alert, Button, Image, Space, Tag, Tooltip, Typography } from 'antd'
+import { CheckOutlined, DownloadOutlined, EditOutlined } from '@ant-design/icons'
+import type { ImageEditSource, Message } from '../../types/messages'
 import MarkdownContent from './MarkdownContent'
 import ThinkingBlock from './ThinkingBlock'
 import MetricsBar from './MetricsBar'
@@ -11,6 +11,8 @@ interface Props {
   message: Message
   markdownEnabled: boolean
   onDebateClick?: (debateId: string, round: number) => void
+  selectedImageEditSourceId?: string | null
+  onImageEditToggle?: (source: ImageEditSource) => void
 }
 
 function UserMessage({ content }: { content: string }) {
@@ -150,12 +152,20 @@ function DebateMessage({
   )
 }
 
-function ImageMessage({ message }: { message: Message }) {
+function ImageMessage({
+  message,
+  selectedImageEditSourceId,
+  onImageEditToggle,
+}: {
+  message: Message
+  selectedImageEditSourceId?: string | null
+  onImageEditToggle?: (source: ImageEditSource) => void
+}) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '6px 16px' }}>
       <div
         style={{
-          maxWidth: '78%',
+          maxWidth: '50%',
           background: '#fff',
           border: '1px solid #f0f0f0',
           borderRadius: '2px 12px 12px 12px',
@@ -181,6 +191,8 @@ function ImageMessage({ message }: { message: Message }) {
                 position: 'absolute',
                 bottom: 8,
                 right: 8,
+                display: 'flex',
+                gap: 6,
               }}
             >
               <a
@@ -188,29 +200,49 @@ function ImageMessage({ message }: { message: Message }) {
                 download={`image-${i + 1}.png`}
                 style={{ textDecoration: 'none' }}
               >
-                <button
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
                   style={{
-                    padding: '5px 10px',
-                    borderRadius: 6,
                     background: 'rgba(255,255,255,0.9)',
-                    border: 'none',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
+                    borderColor: 'rgba(209,213,219,0.9)',
                     backdropFilter: 'blur(4px)',
                   }}
                 >
-                  <DownloadOutlined /> Download
-                </button>
+                  Download
+                </Button>
               </a>
+              {(() => {
+                const sourceId = `${message.id}:${img.index ?? i}`
+                const selected = selectedImageEditSourceId === sourceId
+                return (
+                  <Tooltip title={selected ? 'Click to stop editing this image' : 'Use this image for the next edit'}>
+                    <Button
+                      size="small"
+                      icon={selected ? <CheckOutlined /> : <EditOutlined />}
+                      onClick={() => onImageEditToggle?.({
+                        ...img,
+                        id: sourceId,
+                        label: `Image ${img.index != null ? img.index + 1 : i + 1}`,
+                      })}
+                      style={{
+                        background: selected ? '#dcfce7' : 'rgba(255,255,255,0.9)',
+                        borderColor: selected ? '#86efac' : 'rgba(209,213,219,0.9)',
+                        color: selected ? '#166534' : undefined,
+                        backdropFilter: 'blur(4px)',
+                      }}
+                    >
+                      {selected ? 'Editing' : 'Edit this'}
+                    </Button>
+                  </Tooltip>
+                )
+              })()}
             </div>
           </div>
         ))}
         {message.isStreaming && !message.images?.length && (
           <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-            Generating image…
+            {message.imageAction === 'edit' ? 'Editing image…' : 'Generating image…'}
           </div>
         )}
       </div>
@@ -255,7 +287,13 @@ function CoworkingMessage({ message, markdownEnabled }: { message: Message; mark
   )
 }
 
-function MessageItem({ message, markdownEnabled, onDebateClick }: Props) {
+function MessageItem({
+  message,
+  markdownEnabled,
+  onDebateClick,
+  selectedImageEditSourceId,
+  onImageEditToggle,
+}: Props) {
   switch (message.type) {
     case 'user':
       return <UserMessage content={message.content} />
@@ -267,7 +305,13 @@ function MessageItem({ message, markdownEnabled, onDebateClick }: Props) {
       return <DebateMessage message={message} markdownEnabled={markdownEnabled} onDebateClick={onDebateClick} />
 
     case 'image':
-      return <ImageMessage message={message} />
+      return (
+        <ImageMessage
+          message={message}
+          selectedImageEditSourceId={selectedImageEditSourceId}
+          onImageEditToggle={onImageEditToggle}
+        />
+      )
 
     case 'coworking':
       return <CoworkingMessage message={message} markdownEnabled={markdownEnabled} />

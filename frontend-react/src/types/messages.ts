@@ -27,6 +27,11 @@ export interface ImageData {
   index: number
 }
 
+export interface ImageEditSource extends ImageData {
+  id: string
+  label: string
+}
+
 export interface Message {
   id: string
   type: MessageType
@@ -37,6 +42,7 @@ export interface Message {
   citations?: Citation[]
   metrics?: StreamMetrics
   images?: ImageData[]
+  imageAction?: 'generate' | 'edit'
   debateRound?: number
   debateId?: string
   timestamp?: string

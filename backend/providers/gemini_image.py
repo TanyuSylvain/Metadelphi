@@ -87,6 +87,7 @@ class GeminiImageProvider(BaseLLMProvider):
         api_key: str,
         base_url: Optional[str] = None,
         aspect_ratio: Optional[str] = None,
+        edit_source_image: Optional[Dict] = None,
     ) -> AsyncIterator[Dict]:
         """
         Invoke the image model via native Gemini generateContent and yield

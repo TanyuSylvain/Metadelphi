@@ -2535,7 +2535,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    max-width: 600px;
+    max-width: 50%;
 }
 
 .image-response-text {
