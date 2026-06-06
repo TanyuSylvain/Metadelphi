@@ -4,6 +4,7 @@ import { ConfigProvider, theme } from 'antd'
 import App from './App'
 import ErrorBoundary from './components/layout/ErrorBoundary'
 import 'highlight.js/styles/github.css'
+import 'katex/dist/katex.min.css'
 import './styles/global.css'
 
 const appTheme = {

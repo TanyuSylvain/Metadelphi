@@ -1,6 +1,7 @@
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
 
 // Configure marked
 marked.setOptions({
@@ -17,45 +18,51 @@ renderer.code = ({ text, lang }) => {
 }
 marked.use({ renderer })
 
-function preprocessMath(text: string): string {
-  // Normalize LaTeX delimiters: \[...\] → $$...$$, \(...\) → $...$
-  return text
-    .replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => `$$${math}$$`)
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => `$${math}$`)
+interface MathPlaceholders {
+  values: string[]
 }
 
-function renderKatex(html: string): string {
-  // Replace $$...$$ (display math) and $...$ (inline math)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const katex = (window as any).katex
-    if (!katex) return html
+function preprocessMath(text: string): { text: string; placeholders: MathPlaceholders } {
+  const placeholders: MathPlaceholders = { values: [] }
 
-    html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
-      try {
-        return katex.renderToString(math, { displayMode: true, throwOnError: false })
-      } catch {
-        return `<span class="katex-error">$$${math}$$</span>`
-      }
-    })
-
-    html = html.replace(/\$([^\n$]+?)\$/g, (_, math) => {
-      try {
-        return katex.renderToString(math, { displayMode: false, throwOnError: false })
-      } catch {
-        return `<span class="katex-error">$${math}$</span>`
-      }
-    })
-  } catch {
-    // KaTeX not loaded
+  const addPlaceholder = (math: string, displayMode: boolean, fallback: string) => {
+    try {
+      const rendered = katex.renderToString(math.trim(), {
+        displayMode,
+        throwOnError: false,
+      })
+      const token = `@@KATEX_${placeholders.values.length}@@`
+      placeholders.values.push(rendered)
+      return token
+    } catch {
+      return fallback
+    }
   }
-  return html
+
+  text = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => `$$${math}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => `$${math}$`)
+
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, math) =>
+    addPlaceholder(math, true, match),
+  )
+
+  text = text.replace(/\$([^$\n]+?)\$/g, (match, math) => addPlaceholder(math, false, match))
+
+  return { text, placeholders }
+}
+
+function restoreMath(html: string, placeholders: MathPlaceholders): string {
+  return placeholders.values.reduce(
+    (result, rendered, index) => result.split(`@@KATEX_${index}@@`).join(rendered),
+    html,
+  )
 }
 
 export function renderMarkdown(text: string): string {
-  const preprocessed = preprocessMath(text)
+  const { text: preprocessed, placeholders } = preprocessMath(text)
   const html = marked.parse(preprocessed) as string
-  const withMath = renderKatex(html)
+  const withMath = restoreMath(html, placeholders)
   return DOMPurify.sanitize(withMath, {
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation'],
     ADD_ATTR: ['class', 'style', 'aria-hidden', 'focusable', 'role', 'xmlns'],
