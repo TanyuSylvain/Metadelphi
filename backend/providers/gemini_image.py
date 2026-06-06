@@ -101,9 +101,31 @@ class GeminiImageProvider(BaseLLMProvider):
         """
         native_base = self._resolve_native_base_url(base_url)
         endpoint = f"{native_base}/models/{model_id}:generateContent?key={api_key}"
+        request_messages = messages
+        if edit_source_image:
+            prompt = ""
+            for msg in reversed(messages):
+                if isinstance(msg, dict):
+                    parts = msg.get("parts", [])
+                    if parts and isinstance(parts[0], dict):
+                        prompt = parts[0].get("text", "")
+                    if prompt:
+                        break
+            request_messages = [{
+                "role": "user",
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": edit_source_image.get("mime_type", "image/png"),
+                            "data": edit_source_image.get("data", ""),
+                        }
+                    },
+                    {"text": prompt or ""},
+                ],
+            }]
 
         body = {
-            "contents": messages,
+            "contents": request_messages,
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"],
             },
