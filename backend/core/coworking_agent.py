@@ -320,7 +320,7 @@ class CoworkingAgent:
         question: str,
         conversation_id: str,
         workspace_path: str,
-        max_iterations: int = 25,
+        max_iterations: Optional[int] = None,
         web_search: bool = False,
         run_context: Optional[RunContext] = None,
     ) -> AsyncGenerator[dict, None]:
@@ -331,7 +331,8 @@ class CoworkingAgent:
             question: User's message
             conversation_id: Conversation ID for storage
             workspace_path: Absolute path to workspace directory
-            max_iterations: Maximum ReAct loop iterations
+            max_iterations: Maximum ReAct loop iterations. Defaults to
+                settings.coworking_max_tool_iterations.
             web_search: Enable web search tools
 
         Yields:
@@ -339,6 +340,8 @@ class CoworkingAgent:
                         tool_result, round_complete, file_created, file_deleted,
                         session_notice, final_start, final_chunk, done, error
         """
+        if max_iterations is None:
+            max_iterations = settings.coworking_max_tool_iterations
         # Ensure workspace exists
         os.makedirs(workspace_path, exist_ok=True)
 
@@ -740,7 +743,7 @@ class CoworkingAgent:
         question: str,
         conversation_id: str,
         workspace_path: str,
-        max_iterations: int = 25,
+        max_iterations: Optional[int] = None,
         web_search: bool = False,
         run_context: Optional[RunContext] = None,
     ) -> dict:
@@ -751,7 +754,8 @@ class CoworkingAgent:
             question: User's message
             conversation_id: Conversation ID
             workspace_path: Workspace directory path
-            max_iterations: Maximum iterations
+            max_iterations: Maximum iterations. Defaults to
+                settings.coworking_max_tool_iterations.
             web_search: Enable web search tools
 
         Returns:

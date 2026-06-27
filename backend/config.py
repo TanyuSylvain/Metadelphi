@@ -185,6 +185,8 @@ class Settings(BaseSettings):
 
     # Tool Execution
     max_tool_concurrency: int = 5
+    simple_max_tool_iterations: int = 25
+    coworking_max_tool_iterations: int = 25
 
     # Storage Configuration
     storage_backend: str = "sqlite"  # Options: memory, sqlite, redis
@@ -359,6 +361,8 @@ class Settings(BaseSettings):
         # Non-provider settings persisted to .env
         known_vars['DEFAULT_SEARCH_ENGINE'] = self.default_search_engine
         known_vars['MAX_TOOL_CONCURRENCY'] = str(self.max_tool_concurrency)
+        known_vars['SIMPLE_MAX_TOOL_ITERATIONS'] = str(self.simple_max_tool_iterations)
+        known_vars['COWORKING_MAX_TOOL_ITERATIONS'] = str(self.coworking_max_tool_iterations)
 
         # Read existing .env
         lines = []

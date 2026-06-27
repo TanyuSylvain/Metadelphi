@@ -183,7 +183,7 @@ async def coworking_chat_stream(http_request: Request, request: CoworkingChatReq
                 question=request.message,
                 conversation_id=conversation_id,
                 workspace_path=workspace_path,
-                max_iterations=request.max_iterations,
+                max_iterations=request.max_iterations or settings.coworking_max_tool_iterations,
                 web_search=request.web_search or False,
                 run_context=run_context,
             ):

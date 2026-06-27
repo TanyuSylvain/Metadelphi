@@ -114,6 +114,7 @@ class LangGraphAgent:
         question: str,
         conversation_id: str = None,
         run_context: Optional[RunContext] = None,
+        max_iterations: Optional[int] = None,
     ):
         """
         Stream the response to a user question.
@@ -125,6 +126,8 @@ class LangGraphAgent:
         Args:
             question: The user's question
             conversation_id: Optional conversation ID for multi-turn conversations
+            max_iterations: Optional override for the ReAct loop limit. Defaults to
+                settings.simple_max_tool_iterations.
 
         Yields:
             str: Chunks of the response text
@@ -162,7 +165,7 @@ class LangGraphAgent:
             metrics = MetricsCollector()
             try:
                 async with use_run_context(run_context):
-                    async for chunk in self._stream_with_tools(messages, run_context=run_context, metrics=metrics):
+                    async for chunk in self._stream_with_tools(messages, run_context=run_context, metrics=metrics, max_iterations=max_iterations):
                         if run_context:
                             run_context.raise_if_cancelled()
                         full_response += chunk
@@ -220,7 +223,7 @@ class LangGraphAgent:
     async def _stream_with_tools(
         self,
         messages: list,
-        max_iterations: int = 10,
+        max_iterations: Optional[int] = None,
         run_context: Optional[RunContext] = None,
         metrics: Optional[MetricsCollector] = None,
     ):
@@ -229,12 +232,15 @@ class LangGraphAgent:
 
         Args:
             messages: Chat message list (mutated in-place)
-            max_iterations: Safety limit for tool call rounds
+            max_iterations: Safety limit for tool call rounds. Defaults to
+                settings.simple_max_tool_iterations.
             metrics: Optional MetricsCollector to track timing and token usage
 
         Yields:
             str: Text chunks from the LLM
         """
+        if max_iterations is None:
+            max_iterations = settings.simple_max_tool_iterations
         citations = []
 
         # Prepend citation instruction so the LLM knows to use [N] markers

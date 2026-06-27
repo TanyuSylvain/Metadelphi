@@ -293,7 +293,7 @@ class CoworkingChatRequest(BaseModel):
     workspace_path: str = Field(..., description="Absolute path to workspace directory")
     thinking: Optional[bool] = Field(False, description="Enable thinking mode")
     web_search: Optional[bool] = Field(False, description="Enable web search (Tavily SDK or Bailian MCP)")
-    max_iterations: int = Field(default=25, ge=1, le=50, description="Maximum ReAct loop iterations")
+    max_iterations: Optional[int] = Field(default=None, ge=1, le=50, description="Maximum ReAct loop iterations (defaults to COWORKING_MAX_TOOL_ITERATIONS env setting)")
 
     class Config:
         json_schema_extra = {
@@ -303,7 +303,7 @@ class CoworkingChatRequest(BaseModel):
                 "model": "qwen-max",
                 "workspace_path": "/tmp/workspace",
                 "thinking": False,
-                "max_iterations": 25
+                "max_iterations": None
             }
         }
 
