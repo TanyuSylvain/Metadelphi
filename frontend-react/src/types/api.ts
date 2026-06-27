@@ -49,6 +49,16 @@ export interface ProviderUpdateEntry {
   base_url?: string
 }
 
+export interface SearchEngineStatus {
+  default: 'bailian' | 'tavily'
+  available: Record<'bailian' | 'tavily', boolean>
+  configured: boolean
+}
+
+export interface SearchEngineUpdateRequest {
+  default: 'bailian' | 'tavily'
+}
+
 export interface SwitchModeRequest {
   target_mode: 'simple' | 'debate' | 'coworking'
   debate_config?: {

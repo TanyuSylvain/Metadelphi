@@ -11,7 +11,11 @@ from backend.api.schemas import (
     ProviderUpdateRequest,
     SettingsUpdateResponse,
     ProviderTestResponse,
+    SearchEngineStatusResponse,
+    SearchEngineUpdateRequest,
+    SearchEngineUpdateResponse,
 )
+from backend.tools.web_search import clear_tool_cache
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -36,6 +40,8 @@ async def update_provider_settings(request: ProviderUpdateRequest):
                 )
 
         updated = settings.update_providers(request.providers)
+        # Search tool cache may be stale if Tavily or Bailian key changed
+        clear_tool_cache()
         return SettingsUpdateResponse(
             success=True,
             message=f"Updated {len(updated)} provider(s)",
@@ -55,3 +61,26 @@ async def test_provider_connection(provider_id: str):
 
     result = await asyncio.to_thread(settings.test_provider, provider_id)
     return ProviderTestResponse(**result)
+
+
+@router.get("/search-engine", response_model=SearchEngineStatusResponse)
+async def get_search_engine_status():
+    """Get configured search engines and the current default."""
+    return SearchEngineStatusResponse(**settings.get_search_engine_status())
+
+
+@router.put("/search-engine", response_model=SearchEngineUpdateResponse)
+async def update_search_engine(request: SearchEngineUpdateRequest):
+    """Update the default search engine."""
+    success = settings.update_default_search_engine(request.default)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid search engine. Must be 'bailian' or 'tavily'."
+        )
+    clear_tool_cache()
+    return SearchEngineUpdateResponse(
+        success=True,
+        message="Default search engine updated",
+        default=settings.default_search_engine,
+    )

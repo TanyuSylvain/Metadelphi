@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Button, Divider, Drawer, Input, message, Space, Tag, Typography } from 'antd'
+import { Button, Divider, Drawer, Input, message, Select, Space, Tag, Typography } from 'antd'
 import { EyeInvisibleOutlined, EyeTwoTone, ThunderboltOutlined } from '@ant-design/icons'
 import { modelsApi } from '../../api/models'
 import type { ProviderSettings } from '../../types/models'
+import type { SearchEngineStatus } from '../../types/api'
 
 interface ProviderEntryState {
   api_key: string
@@ -19,20 +20,30 @@ interface Props {
 export default function SettingsDrawer({ open, onClose }: Props) {
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({})
   const [entries, setEntries] = useState<Record<string, ProviderEntryState>>({})
+  const [searchEngine, setSearchEngine] = useState<SearchEngineStatus | null>(null)
+  const [selectedEngine, setSelectedEngine] = useState<'bailian' | 'tavily'>('bailian')
+  const [engineSaving, setEngineSaving] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    modelsApi.getProviderSettings().then((res) => {
-      setProviders(res.providers)
-      const e: Record<string, ProviderEntryState> = {}
-      for (const [id, p] of Object.entries(res.providers)) {
-        e[id] = { api_key: '', base_url: p.base_url ?? '', testing: false, testResult: null }
-      }
-      setEntries(e)
-    }).finally(() => setLoading(false))
+    Promise.all([
+      modelsApi.getProviderSettings(),
+      modelsApi.getSearchEngineStatus(),
+    ])
+      .then(([providerRes, engineRes]) => {
+        setProviders(providerRes.providers)
+        const e: Record<string, ProviderEntryState> = {}
+        for (const [id, p] of Object.entries(providerRes.providers)) {
+          e[id] = { api_key: '', base_url: p.base_url ?? '', testing: false, testResult: null }
+        }
+        setEntries(e)
+        setSearchEngine(engineRes)
+        setSelectedEngine(engineRes.default)
+      })
+      .finally(() => setLoading(false))
   }, [open])
 
   const handleTest = async (providerId: string) => {
@@ -69,12 +80,20 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         if (Object.keys(update).length > 0) updates[id] = update
       }
       await modelsApi.updateProviderSettings(updates)
+
+      if (searchEngine && selectedEngine !== searchEngine.default) {
+        setEngineSaving(true)
+        await modelsApi.updateSearchEngine({ default: selectedEngine })
+        setSearchEngine((prev) => prev ? { ...prev, default: selectedEngine } : prev)
+      }
+
       message.success('Settings saved')
       onClose()
     } catch (e) {
       message.error((e as Error).message)
     } finally {
       setSaving(false)
+      setEngineSaving(false)
     }
   }
 
@@ -225,6 +244,42 @@ export default function SettingsDrawer({ open, onClose }: Props) {
             Tool Providers
           </Typography.Text>
           {toolProviders.map(renderProvider)}
+        </>
+      )}
+
+      {searchEngine && searchEngine.configured && (
+        <>
+          <Divider style={{ borderColor: '#2a2a4e', margin: '14px 0 10px' }} />
+          <Typography.Text style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#4a4a7a', display: 'block', marginBottom: 8 }}>
+            Search Engine
+          </Typography.Text>
+          <div
+            style={{
+              background: '#22223a',
+              border: '1px solid #2e2e4e',
+              borderRadius: 10,
+              padding: '12px 14px',
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', color: '#6b7280', marginBottom: 8 }}>
+              Default Engine
+            </div>
+            <Select
+              value={selectedEngine}
+              onChange={(v) => setSelectedEngine(v)}
+              disabled={engineSaving || !(searchEngine.available.bailian && searchEngine.available.tavily)}
+              style={{ width: '100%', background: '#1a1a2e' }}
+              options={[
+                { value: 'bailian', label: 'Bailian (DashScope MCP)' },
+                { value: 'tavily', label: 'Tavily (SDK)' },
+              ]}
+            />
+            {!(searchEngine.available.bailian && searchEngine.available.tavily) && (
+              <Typography.Text style={{ fontSize: 11, color: '#6b7280', display: 'block', marginTop: 8 }}>
+                Configure both Bailian and Tavily keys to enable switching the default engine.
+              </Typography.Text>
+            )}
+          </div>
         </>
       )}
     </Drawer>

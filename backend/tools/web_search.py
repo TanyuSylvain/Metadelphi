@@ -1,9 +1,12 @@
 """
-Web Search Tool via Configurable MCP Servers.
+Web Search Tool loader.
 
-Lazy-loads web search tools from configured MCP servers using langchain-mcp-adapters.
-Supports multi-server configuration via MCP_SERVERS env var or falls back to legacy
-DASHSCOPE default servers. Returns empty list if no servers are configured.
+Supports two backends:
+1. Tavily SDK (native) - when TAVILY_API_KEY is configured.
+2. Configurable MCP servers - legacy Bailian/DashScope default servers or custom MCP_SERVERS.
+
+The default backend is controlled by DEFAULT_SEARCH_ENGINE ("bailian" or "tavily").
+The non-default backend is used as a fallback when the default is unavailable.
 """
 
 import asyncio
@@ -13,6 +16,7 @@ from typing import List
 from langchain_core.tools import BaseTool
 
 from backend.config import settings
+from backend.tools.tavily_tools import get_tavily_tools
 
 logger = logging.getLogger(__name__)
 
@@ -21,31 +25,16 @@ _cached_tools: List[BaseTool] | None = None
 
 
 def is_web_search_available() -> bool:
-    """Check if web search is available (MCP servers configured)."""
-    servers = settings.get_mcp_servers()
-    return bool(servers)
+    """Check if web search is available (Tavily key or MCP servers configured)."""
+    status = settings.get_search_engine_status()
+    return status["configured"]
 
 
-async def get_web_search_tools() -> List[BaseTool]:
-    """
-    Get web search tools from configured MCP servers.
-
-    Returns cached tools if already loaded. Returns empty list
-    if no MCP servers are configured.
-
-    Returns:
-        List of LangChain tools for web search
-    """
-    global _cached_tools
-
-    if _cached_tools is not None:
-        return _cached_tools
-
+async def _load_mcp_tools() -> List[BaseTool]:
+    """Load web search tools from configured MCP servers."""
     servers = settings.get_mcp_servers()
     if not servers:
-        logger.info("No MCP servers configured, web search unavailable")
-        _cached_tools = []
-        return _cached_tools
+        return []
 
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -95,14 +84,71 @@ async def get_web_search_tools() -> List[BaseTool]:
             # Delay between servers to avoid rate limiting
             await asyncio.sleep(2)
 
-        _cached_tools = all_tools
-        logger.info(f"Total MCP tools loaded: {len(_cached_tools)}")
-        return _cached_tools
+        return all_tools
 
     except Exception as e:
         logger.error(f"Failed to load web search tools from MCP servers: {e}")
+        return []
+
+
+async def _load_tavily_tools() -> List[BaseTool]:
+    """Load native Tavily SDK tools."""
+    try:
+        tools = get_tavily_tools()
+        logger.info(f"Loaded {len(tools)} Tavily tools: {[t.name for t in tools]}")
+        return tools
+    except Exception as e:
+        logger.error(f"Failed to load Tavily tools: {e}")
+        return []
+
+
+async def _load_engine_tools(engine: str) -> List[BaseTool]:
+    """Load tools for a specific search engine."""
+    if engine == "tavily":
+        return await _load_tavily_tools()
+    return await _load_mcp_tools()
+
+
+async def get_web_search_tools() -> List[BaseTool]:
+    """
+    Get web search tools from the configured default engine, falling back to
+    the other engine if the default is unavailable.
+
+    Returns cached tools if already loaded. Returns empty list
+    if no search backend is configured.
+
+    Returns:
+        List of LangChain tools for web search
+    """
+    global _cached_tools
+
+    if _cached_tools is not None:
+        return _cached_tools
+
+    status = settings.get_search_engine_status()
+    if not status["configured"]:
+        logger.info("No search engine configured, web search unavailable")
         _cached_tools = []
         return _cached_tools
+
+    default_engine = status["default"]
+    fallback_engine = "bailian" if default_engine == "tavily" else "tavily"
+
+    all_tools = []
+
+    # Try default engine first
+    if status["available"].get(default_engine, False):
+        logger.info(f"Loading default search engine: {default_engine}")
+        all_tools = await _load_engine_tools(default_engine)
+
+    # Fall back to the other engine if default yielded nothing
+    if not all_tools and status["available"].get(fallback_engine, False):
+        logger.info(f"Falling back to search engine: {fallback_engine}")
+        all_tools = await _load_engine_tools(fallback_engine)
+
+    _cached_tools = all_tools
+    logger.info(f"Total web search tools loaded: {len(_cached_tools)}")
+    return _cached_tools
 
 
 def clear_tool_cache():

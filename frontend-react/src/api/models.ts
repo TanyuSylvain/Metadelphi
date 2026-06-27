@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { Model, ProviderSettings } from '../types/models'
-import type { ProviderUpdateEntry } from '../types/api'
+import type { ProviderUpdateEntry, SearchEngineStatus, SearchEngineUpdateRequest } from '../types/api'
 
 export interface ModelsResponse {
   models: Model[]
@@ -30,4 +30,12 @@ export const modelsApi = {
 
   testProvider: (providerId: string) =>
     api.post<ProviderTestResponse>(`/settings/providers/${providerId}/test`),
+
+  getSearchEngineStatus: () => api.get<SearchEngineStatus>('/settings/search-engine'),
+
+  updateSearchEngine: (data: SearchEngineUpdateRequest) =>
+    api.put<{ success: boolean; message: string; default: 'bailian' | 'tavily' }>(
+      '/settings/search-engine',
+      data,
+    ),
 }

@@ -23,3 +23,7 @@ aiosqlite>=0.20.0
 
 # HTTP Clients
 httpx[socks]>=0.28.0
+
+# Web Search
+# tavily-python is optional; only required when TAVILY_API_KEY is configured
+tavily-python>=0.7.0

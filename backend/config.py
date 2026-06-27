@@ -96,6 +96,15 @@ class Settings(BaseSettings):
             'test_model': None,
             'description': 'DashScope API key for web search MCP tools'
         },
+        'TAVILY': {
+            'name': 'Web Search (Tavily SDK)',
+            'key_env': 'TAVILY_API_KEY',
+            'base_url_env': None,
+            'default_base_url': None,
+            'console_url': 'https://app.tavily.com/',
+            'test_model': None,
+            'description': 'Tavily API key for native web search tools'
+        },
     }
 
     # Provider ID to settings attribute mapping
@@ -108,6 +117,7 @@ class Settings(BaseSettings):
         'OPENAI': 'openai_api_key',
         'GEMINI': 'gemini_api_key',
         'DASHSCOPE': 'dashscope_api_key',
+        'TAVILY': 'tavily_api_key',
     }
 
     _PROVIDER_URL_ATTRS: ClassVar[Dict[str, str]] = {
@@ -152,6 +162,10 @@ class Settings(BaseSettings):
 
     # Tool API Keys
     dashscope_api_key: Optional[str] = None
+    tavily_api_key: Optional[str] = None
+
+    # Web Search Configuration
+    default_search_engine: str = "bailian"  # "bailian" or "tavily"
 
     # Provider Base URLs
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -201,6 +215,7 @@ class Settings(BaseSettings):
             "gemini": self.gemini_api_key,
             "gemini_image": self.gemini_api_key,
             "openai_image": self.openai_api_key,
+            "tavily": self.tavily_api_key,
         }
         return key_map.get(provider)
 
@@ -244,9 +259,25 @@ class Settings(BaseSettings):
                 'console_url': meta['console_url'],
                 'default_base_url': meta['default_base_url'],
                 'test_model': meta['test_model'],
-                'category': 'tool' if provider_id == 'DASHSCOPE' else 'llm',
+                'category': 'tool' if provider_id in {'DASHSCOPE', 'TAVILY'} else 'llm',
             }
         return configs
+
+    def get_search_engine_status(self) -> Dict[str, Any]:
+        """Return configured search engines and the current default."""
+        bailian_available = bool(self.dashscope_api_key)
+        tavily_available = bool(self.tavily_api_key)
+        default = self.default_search_engine.lower()
+        if default not in {'bailian', 'tavily'}:
+            default = 'bailian'
+        return {
+            'default': default,
+            'available': {
+                'bailian': bailian_available,
+                'tavily': tavily_available,
+            },
+            'configured': bailian_available or tavily_available,
+        }
 
     _update_lock: ClassVar[threading.Lock] = threading.Lock()
 
@@ -290,6 +321,17 @@ class Settings(BaseSettings):
 
         return updated
 
+    def update_default_search_engine(self, engine: str) -> bool:
+        """Update the default search engine and persist to .env."""
+        engine = engine.lower()
+        if engine not in {'bailian', 'tavily'}:
+            return False
+        with self._update_lock:
+            self.default_search_engine = engine
+            os.environ['DEFAULT_SEARCH_ENGINE'] = engine
+            self._persist_to_env()
+        return True
+
     def _get_env_path(self) -> Path:
         """Get the path to the .env file."""
         return Path(__file__).parent.parent / ".env"
@@ -313,6 +355,10 @@ class Settings(BaseSettings):
                 if url_attr:
                     val = getattr(self, url_attr, None)
                     known_vars[url_env] = val
+
+        # Non-provider settings persisted to .env
+        known_vars['DEFAULT_SEARCH_ENGINE'] = self.default_search_engine
+        known_vars['MAX_TOOL_CONCURRENCY'] = str(self.max_tool_concurrency)
 
         # Read existing .env
         lines = []
@@ -402,6 +448,22 @@ class Settings(BaseSettings):
                     return {'success': True, 'message': f'Connected (HTTP {resp.status_code})', 'latency_ms': round(latency, 1)}
                 else:
                     return {'success': False, 'message': f'HTTP {resp.status_code}: {resp.text[:200]}', 'latency_ms': round(latency, 1)}
+            except Exception as e:
+                return {'success': False, 'message': str(e)[:200], 'latency_ms': None}
+
+        # Special case: Tavily - test search endpoint
+        if provider_id == 'TAVILY':
+            key_attr = self._PROVIDER_KEY_ATTRS['TAVILY']
+            api_key = getattr(self, key_attr, None)
+            if not api_key:
+                return {'success': False, 'message': 'No API key configured', 'latency_ms': None}
+            try:
+                from tavily import TavilyClient
+                start = time.time()
+                client = TavilyClient(api_key=api_key)
+                client.search("test", max_results=1, search_depth="basic")
+                latency = (time.time() - start) * 1000
+                return {'success': True, 'message': 'Connected', 'latency_ms': round(latency, 1)}
             except Exception as e:
                 return {'success': False, 'message': str(e)[:200], 'latency_ms': None}
 

@@ -363,6 +363,41 @@ class ConfigWizard:
         )
         desc_label.pack(anchor=tk.W, padx=10, pady=(0, 10))
 
+        # Default search engine selector
+        engine_frame = tk.Frame(parent, bg='white')
+        engine_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        engine_label = tk.Label(
+            engine_frame,
+            text="Default Search Engine:",
+            font=('Arial', 10),
+            bg='white',
+            width=20,
+            anchor=tk.W
+        )
+        engine_label.pack(side=tk.LEFT)
+
+        self.default_engine_var = tk.StringVar(value=self.api_keys.get('DEFAULT_SEARCH_ENGINE', 'bailian'))
+        engine_options = ['bailian', 'tavily']
+        engine_dropdown = ttk.Combobox(
+            engine_frame,
+            textvariable=self.default_engine_var,
+            values=engine_options,
+            state='readonly',
+            width=20
+        )
+        engine_dropdown.pack(side=tk.LEFT, padx=5)
+
+        engine_help = tk.Label(
+            parent,
+            text="The default engine is used first; the other acts as fallback if configured.",
+            font=('Arial', 8),
+            bg='white',
+            fg='#95a5a6',
+            justify=tk.LEFT
+        )
+        engine_help.pack(anchor=tk.W, padx=10, pady=(0, 10))
+
         # MCP server frame
         mcp_frame = tk.LabelFrame(
             parent,
@@ -443,6 +478,86 @@ class ConfigWizard:
         link_label.pack(anchor=tk.W, pady=(0, 5))
         link_label.bind('<Button-1>', lambda e: webbrowser.open('https://bailian.console.aliyun.com/'))
 
+        # Tavily SDK frame
+        tavily_frame = tk.LabelFrame(
+            parent,
+            text="Tavily SDK (Web Search)",
+            font=('Arial', 11, 'bold'),
+            bg='white',
+            padx=10,
+            pady=10
+        )
+        tavily_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # Description
+        tavily_desc = tk.Label(
+            tavily_frame,
+            text="Enable native web search, extract, crawl, and map tools via Tavily SDK.",
+            font=('Arial', 9),
+            bg='white',
+            fg='#7f8c8d',
+            justify=tk.LEFT
+        )
+        tavily_desc.pack(anchor=tk.W, pady=(0, 5))
+
+        # API Key entry for Tavily
+        tavily_key_frame = tk.Frame(tavily_frame, bg='white')
+        tavily_key_frame.pack(fill=tk.X, pady=5)
+
+        tavily_key_label = tk.Label(
+            tavily_key_frame,
+            text="API Key:",
+            font=('Arial', 10),
+            bg='white',
+            width=10,
+            anchor=tk.W
+        )
+        tavily_key_label.pack(side=tk.LEFT)
+
+        tavily_existing_value = self.api_keys.get('TAVILY_API_KEY', '')
+
+        tavily_key_entry = tk.Entry(
+            tavily_key_frame,
+            font=('Arial', 10),
+            width=50,
+            show='*'
+        )
+        tavily_key_entry.insert(0, tavily_existing_value)
+        tavily_key_entry.pack(side=tk.LEFT, padx=5)
+
+        # Store reference
+        self.mcp_entries['TAVILY_API_KEY'] = tavily_key_entry
+
+        # Show/Hide button for Tavily
+        tavily_show_var = tk.BooleanVar(value=False)
+
+        def toggle_tavily_password():
+            if tavily_show_var.get():
+                tavily_key_entry.config(show='')
+            else:
+                tavily_key_entry.config(show='*')
+
+        tavily_show_button = ttk.Checkbutton(
+            tavily_key_frame,
+            text="Show",
+            variable=tavily_show_var,
+            command=toggle_tavily_password,
+            width=8
+        )
+        tavily_show_button.pack(side=tk.LEFT)
+
+        # Get Tavily API key link
+        tavily_link_label = tk.Label(
+            tavily_frame,
+            text="Get your API key from Tavily Console",
+            font=('Arial', 9, 'underline'),
+            bg='white',
+            fg='#3498db',
+            cursor='hand2'
+        )
+        tavily_link_label.pack(anchor=tk.W, pady=(0, 5))
+        tavily_link_label.bind('<Button-1>', lambda e: webbrowser.open('https://app.tavily.com/'))
+
         # Tool Concurrency setting
         concurrency_frame = tk.Frame(mcp_frame, bg='white')
         concurrency_frame.pack(fill=tk.X, pady=5)
@@ -511,6 +626,10 @@ class ConfigWizard:
             if value:
                 mcp_config_data[key_var] = value
 
+        # Treat Tavily key as a valid key as well
+        if 'TAVILY_API_KEY' in mcp_config_data:
+            has_valid_key = True
+
         # Validate at least one API key is configured
         if not has_valid_key:
             messagebox.showwarning(
@@ -543,6 +662,15 @@ class ConfigWizard:
                                 f.write(f"{base_url_var}={config_data[base_url_var]}\n")
 
                         f.write("\n")
+
+                # Write Web Search configuration
+                f.write("# Web Search Configuration\n")
+                default_engine = self.default_engine_var.get().strip().lower()
+                if default_engine in ['bailian', 'tavily']:
+                    f.write(f"DEFAULT_SEARCH_ENGINE={default_engine}\n")
+                if 'TAVILY_API_KEY' in mcp_config_data:
+                    f.write(f"TAVILY_API_KEY={mcp_config_data['TAVILY_API_KEY']}\n")
+                f.write("\n")
 
                 # Write MCP server configuration
                 if mcp_config_data:

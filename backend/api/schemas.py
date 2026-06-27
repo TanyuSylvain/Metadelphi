@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Optional conversation ID for multi-turn chat")
     model: Optional[str] = Field(None, description="Model ID to use (e.g., 'mistral-large-latest')")
     thinking: Optional[bool] = Field(None, description="Enable thinking mode for models that support it")
-    web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
+    web_search: Optional[bool] = Field(False, description="Enable web search (Tavily SDK or Bailian MCP)")
     aspect_ratio: Optional[str] = Field(None, description="Aspect ratio for image generation (e.g. 1:1, 16:9)")
     image_action: Optional[Literal["generate", "edit"]] = Field(
         None,
@@ -292,7 +292,7 @@ class CoworkingChatRequest(BaseModel):
     model: Optional[str] = Field(None, description="Model ID to use")
     workspace_path: str = Field(..., description="Absolute path to workspace directory")
     thinking: Optional[bool] = Field(False, description="Enable thinking mode")
-    web_search: Optional[bool] = Field(False, description="Enable web search via DASHSCOPE MCP")
+    web_search: Optional[bool] = Field(False, description="Enable web search (Tavily SDK or Bailian MCP)")
     max_iterations: int = Field(default=25, ge=1, le=50, description="Maximum ReAct loop iterations")
 
     class Config:
@@ -348,6 +348,29 @@ class SwitchModeResponse(BaseModel):
                 "message": "Switched to debate mode. Previous conversation context prepared."
             }
         }
+
+
+# =============================================================================
+# Search Engine Settings Schemas
+# =============================================================================
+
+class SearchEngineStatusResponse(BaseModel):
+    """Response model for search engine status."""
+    default: str = Field(..., description="Default search engine: 'bailian' or 'tavily'")
+    available: Dict[str, bool] = Field(..., description="Availability of each search engine")
+    configured: bool = Field(..., description="Whether any search engine is configured")
+
+
+class SearchEngineUpdateRequest(BaseModel):
+    """Request model for updating the default search engine."""
+    default: str = Field(..., description="Default search engine: 'bailian' or 'tavily'")
+
+
+class SearchEngineUpdateResponse(BaseModel):
+    """Response model for updating the default search engine."""
+    success: bool = Field(..., description="Whether the update was successful")
+    message: str = Field(..., description="Status message")
+    default: str = Field(..., description="Current default search engine")
 
 
 # =============================================================================
