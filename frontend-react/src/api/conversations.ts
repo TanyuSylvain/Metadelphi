@@ -49,6 +49,7 @@ export function historyToMessages(
     .filter((m) => m.role !== 'system')
     .map((m, i) => {
       const metrics = m.metadata?.metrics as Message['metrics'] | undefined
+      const citations = m.metadata?.citations as Message['citations'] | undefined
       const isDebateAnswer =
         m.message_type === 'final_answer' &&
         Array.isArray((m.metadata?.metrics as { model_ids?: unknown } | undefined)?.model_ids)
@@ -87,6 +88,7 @@ export function historyToMessages(
         timestamp: m.timestamp,
         model: m.model,
         metrics,
+        citations,
         images,
         debateRound: isDebateAnswer ? m.iteration : undefined,
       }

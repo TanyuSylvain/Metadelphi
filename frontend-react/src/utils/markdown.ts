@@ -2,6 +2,7 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
+import type { Citation } from '../types/messages'
 
 // Configure marked
 marked.setOptions({
@@ -59,13 +60,41 @@ function restoreMath(html: string, placeholders: MathPlaceholders): string {
   )
 }
 
-export function renderMarkdown(text: string): string {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function renderCitations(text: string, citations?: Citation[]): string {
+  if (!citations?.length) return text
+  const map = new Map(citations.map((c) => [c.index, c]))
+  return text.replace(/\[(\d+)\]/g, (match, num) => {
+    const c = map.get(Number(num))
+    if (!c) return match
+    const titleAttr = escapeHtml(c.title || '')
+    const urlAttr = escapeHtml(c.url)
+    return `<a class="citation-ref" href="${c.url}" target="_blank" rel="noopener noreferrer" data-url="${urlAttr}" data-title="${titleAttr}">[${num}]</a>`
+  })
+}
+
+export function renderMarkdown(text: string, citations?: Citation[]): string {
   const { text: preprocessed, placeholders } = preprocessMath(text)
-  const html = marked.parse(preprocessed) as string
+  const withCitations = renderCitations(preprocessed, citations)
+  const html = marked.parse(withCitations) as string
   const withMath = restoreMath(html, placeholders)
   return DOMPurify.sanitize(withMath, {
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation'],
-    ADD_ATTR: ['class', 'style', 'aria-hidden', 'focusable', 'role', 'xmlns'],
+    ADD_TAGS: [
+      'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'annotation',
+      'a',
+    ],
+    ADD_ATTR: [
+      'class', 'style', 'aria-hidden', 'focusable', 'role', 'xmlns',
+      'href', 'target', 'rel',
+    ],
   })
 }
 

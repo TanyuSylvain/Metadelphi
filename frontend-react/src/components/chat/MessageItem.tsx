@@ -69,7 +69,7 @@ function AssistantMessage({
         )}
 
         <div className={message.isStreaming ? 'streaming-cursor' : ''}>
-          <MarkdownContent content={message.content} markdownEnabled={markdownEnabled} />
+          <MarkdownContent content={message.content} markdownEnabled={markdownEnabled} citations={message.citations} />
         </div>
 
         {!message.isStreaming && message.metrics && (
@@ -272,7 +272,7 @@ function CoworkingMessage({ message, markdownEnabled }: { message: Message; mark
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#9ca3af', marginBottom: 8 }}>
               🛠 Agent Response
             </div>
-            <MarkdownContent content={message.content} markdownEnabled={markdownEnabled} />
+            <MarkdownContent content={message.content} markdownEnabled={markdownEnabled} citations={message.citations} />
             <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
               <CopyButton content={message.content} />
             </div>

@@ -19,6 +19,7 @@ from backend.utils import TextProcessor
 from backend.utils.citation import (
     CITATION_SYSTEM_INSTRUCTION,
     extract_citations_from_result,
+    extract_citations_metadata,
     format_citations_metadata,
     strip_citations_metadata,
 )
@@ -172,16 +173,20 @@ class LangGraphAgent:
                         yield chunk
             finally:
                 if conversation_id and full_response:
+                    citations = extract_citations_metadata(full_response)
                     clean_response = strip_citations_metadata(full_response)
                     clean_response = strip_metrics_metadata(clean_response)
                     converted_response = TextProcessor.convert_math_delimiters(clean_response)
                     result = metrics.finish(model_id=self.model_id)
+                    metadata = {"metrics": result.to_dict()}
+                    if citations:
+                        metadata["citations"] = citations
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=converted_response,
                         model=self.model_id,
-                        metadata={"metrics": result.to_dict()}
+                        metadata=metadata
                     )
                     await record_used_mode(self.storage, conversation_id, "simple")
         else:

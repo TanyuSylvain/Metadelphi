@@ -103,3 +103,25 @@ def strip_citations_metadata(text: str) -> str:
         Cleaned text with delimiter removed
     """
     return _CITATIONS_DELIMITER_RE.sub('', text)
+
+
+def extract_citations_metadata(text: str) -> List[Dict]:
+    """
+    Extract citation metadata from a response text.
+
+    Parses the `<!--CITATIONS_JSON[...]CITATIONS_JSON-->` delimiter
+    and returns the list of citation objects.
+
+    Args:
+        text: Response text potentially containing citation delimiter
+
+    Returns:
+        List of citation dicts with index, url, title (empty if none found)
+    """
+    match = _CITATIONS_DELIMITER_RE.search(text)
+    if not match:
+        return []
+    try:
+        return json.loads(match.group(1))
+    except (json.JSONDecodeError, TypeError):
+        return []

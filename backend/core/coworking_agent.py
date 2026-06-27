@@ -675,12 +675,15 @@ class CoworkingAgent:
                 metrics_dict = metrics.finish(model_id=self.model_id).to_dict() if metrics else None
 
                 if final_response:
+                    metadata = {"metrics": metrics_dict} if metrics_dict else {}
+                    if citations:
+                        metadata["citations"] = citations
                     await self.storage.add_message(
                         conversation_id=conversation_id,
                         role="assistant",
                         content=final_response,
                         model=self.model_id,
-                        metadata={"metrics": metrics_dict} if metrics_dict else {}
+                        metadata=metadata
                     )
                     await record_used_mode(self.storage, conversation_id, "coworking")
                     assistant_saved = True
@@ -723,11 +726,13 @@ class CoworkingAgent:
             }
         finally:
             if final_response and not assistant_saved:
+                metadata = {"citations": citations} if citations else {}
                 await self.storage.add_message(
                     conversation_id=conversation_id,
                     role="assistant",
                     content=TextProcessor.convert_math_delimiters(final_response),
-                    model=self.model_id
+                    model=self.model_id,
+                    metadata=metadata
                 )
                 await record_used_mode(self.storage, conversation_id, "coworking")
             if not file_state_recomputed:

@@ -4,6 +4,7 @@ import { useChatStore } from '../store/chatStore'
 import { useCoworkingStore } from '../store/coworkingStore'
 import { generateUUID } from '../utils/uuid'
 import type { CoworkingChatRequest } from '../types/api'
+import type { Citation } from '../types/messages'
 
 async function* readSSE(res: Response, signal: AbortSignal): AsyncGenerator<Record<string, unknown>> {
   const reader = res.body!.getReader()
@@ -64,6 +65,7 @@ export function useCoworkingStream() {
 
     const activeToolIds: Record<string, string> = {} // tool name → store id (by round)
     let currentRound = 0
+    let citations: Citation[] = []
 
     try {
       const res = await fetch('/chat/coworking/stream', {
@@ -129,6 +131,10 @@ export function useCoworkingStream() {
             addDeletedFile(event.file_path as string)
             break
 
+          case 'citations':
+            citations = (event.citations as Citation[]) ?? []
+            break
+
           case 'final_chunk':
             appendFinalAnswer(event.content as string)
             break
@@ -137,7 +143,9 @@ export function useCoworkingStream() {
             const finalAnswer = useCoworkingStore.getState().finalAnswer
             useChatStore.setState((s) => ({
               messages: s.messages.map((m) =>
-                m.id === cwMsgId ? { ...m, content: finalAnswer, isStreaming: false } : m,
+                m.id === cwMsgId
+                  ? { ...m, content: finalAnswer, isStreaming: false, citations: citations.length > 0 ? citations : undefined }
+                  : m,
               ),
               streamingMessageId: null,
             }))
