@@ -25,7 +25,7 @@ import MessageItem from './components/chat/MessageItem'
 import MessageInput from './components/input/MessageInput'
 import DebatePanel from './components/debate/DebatePanel'
 import CoworkingPanel from './components/coworking/CoworkingPanel'
-import SettingsDrawer from './components/settings/SettingsDrawer'
+import ConfigPanel from './components/config/ConfigPanel'
 import type { ImageEditSource } from './types/messages'
 
 const { Sider, Header, Content } = Layout
@@ -109,8 +109,8 @@ export default function App() {
   const workspacePath = useCoworkingStore((s) => s.workspacePath)
   const setWorkspacePath = useCoworkingStore((s) => s.setWorkspacePath)
   const isProcessing = useAppStore((s) => s.isProcessing)
-  const settingsOpen = useAppStore((s) => s.settingsOpen)
-  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen)
+  const configOpen = useAppStore((s) => s.configOpen)
+  const setConfigOpen = useAppStore((s) => s.setConfigOpen)
   const cancelRun = useAppStore((s) => s.cancel)
   const conversationId = useChatStore((s) => s.conversationId)
   const setConversationId = useChatStore((s) => s.setConversationId)
@@ -120,7 +120,7 @@ export default function App() {
   const setImageEditSource = useChatStore((s) => s.setImageEditSource)
   const clearImageEditSource = useChatStore((s) => s.clearImageEditSource)
 
-  const { models, loading: modelsLoading } = useModels()
+  const { models, loading: modelsLoading, refetch: refetchModels } = useModels()
   const { conversations, loading: convsLoading, reload: reloadConvs, deleteConversation, deleteAll } = useConversations()
 
   const simpleStream = useSimpleStream()
@@ -447,101 +447,101 @@ export default function App() {
             onImageModeChange={prefs.setImageModeEnabled}
             onAspectRatioChange={prefs.setImageAspectRatio}
             onDebatePanelChange={prefs.setDebatePanelVisible}
-            onSettingsClick={() => setSettingsOpen(true)}
+            onSettingsClick={() => setConfigOpen(!configOpen)}
           />
         </Header>
 
-        {/* Debate config */}
-        {prefs.chatMode === 'debate' && (
-          <MultiAgentConfigPanel
-            config={prefs.multiAgentConfig}
-            models={models}
-            onChange={prefs.setMultiAgentConfig}
-          />
-        )}
+        {configOpen ? (
+          <ConfigPanel onSaved={refetchModels} />
+        ) : (
+          <>
+            {/* Debate config */}
+            {prefs.chatMode === 'debate' && (
+              <MultiAgentConfigPanel
+                config={prefs.multiAgentConfig}
+                models={models}
+                onChange={prefs.setMultiAgentConfig}
+              />
+            )}
 
-        {/* Coworking workspace config */}
-        {prefs.chatMode === 'coworking' && (
-          <CoworkingConfig
-            workspacePath={workspacePath}
-            onPathChange={setWorkspacePath}
-          />
-        )}
+            {/* Coworking workspace config */}
+            {prefs.chatMode === 'coworking' && (
+              <CoworkingConfig
+                workspacePath={workspacePath}
+                onPathChange={setWorkspacePath}
+              />
+            )}
 
-        {/* Main panel */}
-        <Content
-          ref={mainRef as React.RefObject<HTMLDivElement>}
-          style={{ display: 'flex', overflow: 'hidden', flex: 1 }}
-        >
-          {/* Chat area */}
-          <div
-            style={{
-              flex: showRightPanel ? prefs.panelRatio : 1,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              background: '#f5f5f5',
-            }}
-          >
-            {/* Messages */}
-            <MessagesPane
-              messagesRef={messagesRef}
-              messagesContentRef={messagesContentRef}
-              markdownEnabled={prefs.markdownEnabled}
-              scrollToBottom={scrollToBottom}
-              onDebateClick={handleDebateMessageClick}
-              selectedImageEditSourceId={imageEditSource?.id ?? null}
-              onImageEditToggle={handleImageEditToggle}
-            />
-
-            {/* Input */}
-            <MessageInput
-              onSend={handleSend}
-              onCancel={cancelRun}
-              isProcessing={isProcessing}
-              placeholder={
-                prefs.chatMode === 'debate'
-                  ? 'Send a question to the debate agents…'
-                  : prefs.chatMode === 'coworking'
-                  ? 'Describe the task for the agent…'
-                  : prefs.imageModeEnabled
-                  ? 'Describe the image to generate…'
-                  : 'Type a message… (Enter to send)'
-              }
-              imageEditSource={imageEditSource}
-              onClearImageEditSource={clearImageEditSource}
-            />
-          </div>
-
-          {/* Panel divider */}
-          {showRightPanel && (
-            <div
-              className={`panel-resize-handle${panelDragging ? ' dragging' : ''}`}
-              onMouseDown={startPanelDrag}
-            />
-          )}
-
-          {/* Right panel */}
-          {showRightPanel && (
-            <div
-              style={{
-                flex: 1 - prefs.panelRatio,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
+            {/* Main panel */}
+            <Content
+              ref={mainRef as React.RefObject<HTMLDivElement>}
+              style={{ display: 'flex', overflow: 'hidden', flex: 1 }}
             >
-              {prefs.chatMode === 'debate' ? <DebatePanel /> : <CoworkingPanel />}
-            </div>
-          )}
-        </Content>
-      </Layout>
+              {/* Chat area */}
+              <div
+                style={{
+                  flex: showRightPanel ? prefs.panelRatio : 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  background: '#f5f5f5',
+                }}
+              >
+                {/* Messages */}
+                <MessagesPane
+                  messagesRef={messagesRef}
+                  messagesContentRef={messagesContentRef}
+                  markdownEnabled={prefs.markdownEnabled}
+                  scrollToBottom={scrollToBottom}
+                  onDebateClick={handleDebateMessageClick}
+                  selectedImageEditSourceId={imageEditSource?.id ?? null}
+                  onImageEditToggle={handleImageEditToggle}
+                />
 
-      {/* Settings drawer */}
-      <SettingsDrawer
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+                {/* Input */}
+                <MessageInput
+                  onSend={handleSend}
+                  onCancel={cancelRun}
+                  isProcessing={isProcessing}
+                  placeholder={
+                    prefs.chatMode === 'debate'
+                      ? 'Send a question to the debate agents…'
+                      : prefs.chatMode === 'coworking'
+                      ? 'Describe the task for the agent…'
+                      : prefs.imageModeEnabled
+                      ? 'Describe the image to generate…'
+                      : 'Type a message… (Enter to send)'
+                  }
+                  imageEditSource={imageEditSource}
+                  onClearImageEditSource={clearImageEditSource}
+                />
+              </div>
+
+              {/* Panel divider */}
+              {showRightPanel && (
+                <div
+                  className={`panel-resize-handle${panelDragging ? ' dragging' : ''}`}
+                  onMouseDown={startPanelDrag}
+                />
+              )}
+
+              {/* Right panel */}
+              {showRightPanel && (
+                <div
+                  style={{
+                    flex: 1 - prefs.panelRatio,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  {prefs.chatMode === 'debate' ? <DebatePanel /> : <CoworkingPanel />}
+                </div>
+              )}
+            </Content>
+          </>
+        )}
+      </Layout>
     </Layout>
   )
 }

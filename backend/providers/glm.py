@@ -10,24 +10,7 @@ from .base import BaseLLMProvider
 class GLMProvider(BaseLLMProvider):
     """Zhipu AI GLM provider using OpenAI-compatible API."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available GLM models."""
-        return [
-            {
-                "id": "glm-5",
-                "name": "GLM 5",
-                "description": "Latest front-tier GLM model",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
-            {
-                "id": "glm-4.7",
-                "name": "GLM 4.7",
-                "description": "Enhanced GLM-4 with improved capabilities",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
-        ]
+    provider_id = "glm"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""

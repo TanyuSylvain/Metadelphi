@@ -1,6 +1,6 @@
 import { api } from './client'
-import type { Model, ProviderSettings } from '../types/models'
-import type { ProviderUpdateEntry, SearchEngineStatus, SearchEngineUpdateRequest } from '../types/api'
+import type { AppConfig, Model, ProviderSettings } from '../types/models'
+import type { SearchEngineStatus, SearchEngineUpdateRequest } from '../types/api'
 
 export interface ModelsResponse {
   models: Model[]
@@ -17,19 +17,39 @@ export interface ProviderTestResponse {
   latency_ms: number | null
 }
 
+export interface ProviderModelTestRequest {
+  provider_id: string
+  model_id: string
+  api_key: string
+  base_url?: string
+  is_image_model: boolean
+}
+
+export interface ConfigResponse {
+  config: AppConfig
+}
+
+export interface ConfigUpdateResponse {
+  success: boolean
+  message: string
+  errors?: string[]
+}
+
 export const modelsApi = {
   list: () => api.get<ModelsResponse>('/models/'),
 
   getProviderSettings: () => api.get<ProviderSettingsResponse>('/settings/providers'),
 
-  updateProviderSettings: (providers: Record<string, ProviderUpdateEntry>) =>
-    api.put<{ success: boolean; message: string; providers_updated: string[] }>(
-      '/settings/providers',
-      { providers },
-    ),
-
   testProvider: (providerId: string) =>
     api.post<ProviderTestResponse>(`/settings/providers/${providerId}/test`),
+
+  testProviderModel: (request: ProviderModelTestRequest) =>
+    api.post<ProviderTestResponse>('/settings/providers/test-model', request),
+
+  getConfig: () => api.get<ConfigResponse>('/settings/config'),
+
+  updateConfig: (config: AppConfig) =>
+    api.put<ConfigUpdateResponse>('/settings/config', { config }),
 
   getSearchEngineStatus: () => api.get<SearchEngineStatus>('/settings/search-engine'),
 

@@ -2,7 +2,7 @@
 Provider registry for managing available LLM providers.
 """
 
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 from .base import BaseLLMProvider
 from .mistral import MistralProvider
 from .qwen import QwenProvider
@@ -20,7 +20,7 @@ class ProviderRegistry:
 
     MODEL_REF_SEPARATOR = "::"
 
-    # Registry of provider name to provider class
+    # Public provider IDs -> text implementation classes.
     _providers: Dict[str, Type[BaseLLMProvider]] = {
         "mistral": MistralProvider,
         "qwen": QwenProvider,
@@ -29,38 +29,55 @@ class ProviderRegistry:
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
-        "gemini_image": GeminiImageProvider,
-        "openai_image": OpenAIImageProvider,
+    }
+
+    # Internal image implementation classes affiliated with public providers.
+    _image_providers: Dict[str, Type[BaseLLMProvider]] = {
+        "openai": OpenAIImageProvider,
+        "gemini": GeminiImageProvider,
     }
 
     @classmethod
-    def get_provider(cls, provider_name: str) -> BaseLLMProvider:
+    def get_provider(
+        cls,
+        provider_name: str,
+        model_id: Optional[str] = None,
+    ) -> BaseLLMProvider:
         """
         Get a provider instance by name.
 
         Args:
-            provider_name: Name of the provider (e.g., 'mistral', 'qwen')
+            provider_name: Public provider ID (e.g., 'openai', 'gemini').
+            model_id: Optional model ID. If provided and the model is an image
+                model, the affiliated image implementation is returned.
 
         Returns:
-            Instance of the provider
+            Instance of the provider implementation.
 
         Raises:
-            ValueError: If provider_name is not registered
+            ValueError: If provider_name is not registered.
         """
         if provider_name not in cls._providers:
             raise ValueError(
                 f"Unknown provider: {provider_name}. "
                 f"Available providers: {', '.join(cls.list_providers())}"
             )
+
+        if model_id and provider_name in cls._image_providers:
+            from backend.config import settings
+            model = settings.find_model(provider_name, model_id)
+            if model and model.get("is_image_model"):
+                return cls._image_providers[provider_name]()
+
         return cls._providers[provider_name]()
 
     @classmethod
     def list_providers(cls) -> List[str]:
         """
-        List all registered provider names.
+        List all public provider IDs.
 
         Returns:
-            List of provider names
+            List of provider IDs.
         """
         return list(cls._providers.keys())
 
@@ -78,23 +95,18 @@ class ProviderRegistry:
         return None, model_ref
 
     @classmethod
-    def get_all_models(cls) -> Dict[str, List[Dict[str, str]]]:
+    def get_all_models(cls) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get all available models grouped by provider.
+        Get all available models grouped by public provider ID.
 
         Returns:
-            Dict mapping provider names to their available models
-            Example: {
-                "mistral": [
-                    {"id": "mistral-large-latest", "name": "Mistral Large", ...},
-                    ...
-                ]
-            }
+            Dict mapping provider IDs to their available models from config.
         """
+        from backend.config import settings
+
         result = {}
         for provider_name in cls.list_providers():
-            provider = cls.get_provider(provider_name)
-            result[provider_name] = provider.get_available_models()
+            result[provider_name] = settings.get_provider_models(provider_name)
         return result
 
     @classmethod
@@ -117,37 +129,38 @@ class ProviderRegistry:
         provider_name: Optional[str] = None,
     ) -> tuple[str, BaseLLMProvider]:
         """
-        Find which provider supports a given model ID.
+        Find which public provider supports a given model ID.
 
         Args:
-            model_id: Model ID to search for
+            model_id: Model ID or provider-qualified model ref to search for.
+            provider_name: Optional provider hint.
 
         Returns:
             Tuple of (provider_name, provider_instance)
 
         Raises:
-            ValueError: If model_id is not found in any provider
+            ValueError: If model_id is not found in any registered provider.
         """
+        from backend.config import settings
+
         provider_hint, raw_model_id = cls.parse_model_ref(model_id)
         provider_name = provider_name or provider_hint
 
         if provider_name is not None:
-            provider = cls.get_provider(provider_name)
-            model_ids = [m["id"] for m in provider.get_available_models()]
-            if raw_model_id in model_ids:
-                return provider_name, provider
+            if provider_name not in cls._providers:
+                raise ValueError(f"Unknown provider: {provider_name}")
+            model = settings.find_model(provider_name, raw_model_id)
+            if model:
+                return provider_name, cls.get_provider(provider_name, raw_model_id)
             raise ValueError(
-                f"Model '{raw_model_id}' not found for provider '{provider_name}'. "
-                f"Available models: {', '.join(model_ids)}"
+                f"Model '{raw_model_id}' not found for provider '{provider_name}'."
             )
 
         for provider_name in cls.list_providers():
-            provider = cls.get_provider(provider_name)
-            model_ids = [m["id"] for m in provider.get_available_models()]
-            if raw_model_id in model_ids:
-                return provider_name, provider
+            model = settings.find_model(provider_name, raw_model_id)
+            if model:
+                return provider_name, cls.get_provider(provider_name, raw_model_id)
 
         raise ValueError(
-            f"Model '{raw_model_id}' not found in any registered provider. "
-            f"Use get_all_models() to see available models."
+            f"Model '{raw_model_id}' not found in any registered provider."
         )

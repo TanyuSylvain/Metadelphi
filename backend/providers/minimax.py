@@ -10,17 +10,7 @@ from .base import BaseLLMProvider
 class MiniMaxProvider(BaseLLMProvider):
     """MiniMax provider using OpenAI-compatible API."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available MiniMax models."""
-        return [
-            {
-                "id": "MiniMax-M2.7-highspeed",
-                "name": "MiniMax-M2.7",
-                "description": "Latest generation model with superior performance",
-                "supports_thinking": True,
-                "thinking_locked": True
-            },
-        ]
+    provider_id = "minimax"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""

@@ -20,27 +20,7 @@ logger = logging.getLogger(__name__)
 class GeminiImageProvider(BaseLLMProvider):
     """Google Gemini image generation provider using the native GenAI REST API."""
 
-    MODELS = [
-        {
-            "id": "gemini-3.1-flash-image-preview",
-            "name": "Gemini 3.1 Flash Image",
-            "description": "Gemini 3.1 Flash with native image generation",
-            "supports_thinking": False,
-            "thinking_locked": False,
-            "is_image_model": True,
-        },
-        {
-            "id": "gemini-2.5-flash-image",
-            "name": "Gemini 2.5 Flash Image",
-            "description": "Gemini 2.5 Flash with native image generation",
-            "supports_thinking": False,
-            "thinking_locked": False,
-            "is_image_model": True,
-        },
-    ]
-
-    def get_available_models(self) -> List[Dict[str, str]]:
-        return self.MODELS
+    provider_id = "gemini"
 
     def get_provider_name(self) -> str:
         return "Google Gemini Image"

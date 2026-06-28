@@ -306,7 +306,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
     provider_name, raw_model_id = resolve_model(model_id)
 
     try:
-        provider = ProviderRegistry.get_provider(provider_name)
+        provider = ProviderRegistry.get_provider(provider_name, raw_model_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_id}")
 
@@ -359,7 +359,7 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                     "image_action": "generate",
                     "routing_reason": "explicit_generate",
                 }
-            elif latest_history_image and provider_name in {"openai_image", "gemini_image"}:
+            elif latest_history_image and (settings.find_model(provider_name, raw_model_id) or {}).get("is_image_model"):
                 classifier_result = await _classify_image_intent(request.message)
                 if classifier_result.get("action") == "edit":
                     edit_source_image = latest_history_image
@@ -378,10 +378,10 @@ async def image_chat_stream(http_request: Request, request: ChatRequest):
                         "classifier_error": classifier_result.get("error"),
                     }
 
-            if routing["image_action"] == "edit" and provider_name not in {"openai_image", "gemini_image"}:
+            if routing["image_action"] == "edit" and not (settings.find_model(provider_name, raw_model_id) or {}).get("is_image_model"):
                 yield _format_sse_event({
                     "type": "error",
-                    "message": "Image editing is currently supported only by OpenAI and Gemini image providers.",
+                    "message": "Image editing is currently supported only by OpenAI and Gemini image models.",
                 })
                 return
 

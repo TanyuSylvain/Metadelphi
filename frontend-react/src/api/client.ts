@@ -8,8 +8,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+async function request<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
+  const timeout = options?.timeout ?? 15000
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(timeout),
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
   })

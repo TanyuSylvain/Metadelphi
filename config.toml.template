@@ -1,0 +1,94 @@
+# Metadelphi configuration template.
+# Copy this file to `config.toml` and fill in your own API keys.
+# Never commit `config.toml` with real secrets.
+
+[general]
+api_host = "0.0.0.0"
+api_port = 8000
+
+[agents]
+max_tool_concurrency = 5
+simple_max_tool_iterations = 25
+coworking_max_tool_iterations = 25
+
+[web_search]
+default_engine = "bailian"  # "bailian" or "tavily"
+bailian_api_key = "your_bailian_api_key"
+tavily_api_key = "your_tavily_api_key"
+
+[mcp]
+servers = []
+# Example MCP server entry:
+# [[mcp.servers]]
+# name = "filesystem"
+# url = "http://localhost:3000/sse"
+
+[providers.mistral]
+api_key = "your_mistral_api_key"
+# Mistral uses its native API; base_url is not configurable.
+
+[[providers.mistral.models]]
+id = "mistral-large-latest"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.qwen]
+api_key = "your_qwen_api_key"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+[[providers.qwen.models]]
+id = "qwen-max"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.glm]
+api_key = "your_glm_api_key"
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+
+[[providers.glm.models]]
+id = "glm-4-plus"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.minimax]
+api_key = "your_minimax_api_key"
+base_url = "https://api.minimax.chat/v1"
+
+[[providers.minimax.models]]
+id = "MiniMax-M2.1"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.deepseek]
+api_key = "your_deepseek_api_key"
+base_url = "https://api.deepseek.com"
+
+[[providers.deepseek.models]]
+id = "deepseek-chat"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.openai]
+api_key = "your_openai_api_key"
+base_url = "https://api.openai.com/v1"
+
+[[providers.openai.models]]
+id = "gpt-4o"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false
+
+[providers.gemini]
+api_key = "your_gemini_api_key"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+[[providers.gemini.models]]
+id = "gemini-2.5-pro-preview"
+supports_thinking = false
+thinking_locked = false
+is_image_model = false

@@ -17,6 +17,7 @@ pydantic-settings>=2.6.0
 
 # Configuration
 python-dotenv>=1.0.0
+tomli-w>=1.0.0
 
 # Database
 aiosqlite>=0.20.0

@@ -53,14 +53,20 @@ class ProviderFactory:
         if provider_name is None:
             provider_name, provider = ProviderRegistry.find_provider_for_model(model_id)
         else:
-            provider = ProviderRegistry.get_provider(provider_name)
+            provider = ProviderRegistry.get_provider(provider_name, raw_model_id)
+
+        # Validate the requested model exists in configuration
+        if not settings.find_model(provider_name, raw_model_id):
+            raise ValueError(
+                f"Model '{raw_model_id}' not configured for provider '{provider_name}'."
+            )
 
         # Get API key for the provider
         api_key = settings.get_api_key(provider_name)
         if not api_key:
             raise ValueError(
                 f"API key for {provider.get_provider_name()} not found. "
-                f"Please set the appropriate environment variable in .env"
+                f"Please configure it in config.toml."
             )
 
         # Get base URL if applicable (for OpenAI-compatible providers)
@@ -142,8 +148,8 @@ class ProviderFactory:
                     "provider_name": provider.get_provider_name(),
                     "model_id": model_id,
                     "model_ref": ProviderRegistry.build_model_ref(provider_id, model_id),
-                    "model_name": model["name"],
-                    "description": model["description"],
+                    "model_name": model.get("name") or model_id,
+                    "description": model.get("description", ""),
                     "supports_thinking": provider.supports_thinking(model_id),
                     "thinking_locked": provider.is_thinking_locked(model_id),
                     "is_image_model": provider.is_image_model(model_id),

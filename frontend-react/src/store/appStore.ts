@@ -5,11 +5,13 @@ interface AppState {
   activeRunId: string | null
   abortController: AbortController | null
   settingsOpen: boolean
+  configOpen: boolean
 
   beginRun: (controller: AbortController) => void
   setActiveRunId: (id: string | null) => void
   resetRun: () => void
   setSettingsOpen: (open: boolean) => void
+  setConfigOpen: (open: boolean) => void
   cancel: () => void
 }
 
@@ -18,6 +20,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeRunId: null,
   abortController: null,
   settingsOpen: false,
+  configOpen: false,
 
   beginRun: (controller) =>
     set({ isProcessing: true, abortController: controller, activeRunId: null }),
@@ -28,6 +31,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isProcessing: false, activeRunId: null, abortController: null }),
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setConfigOpen: (open) => set({ configOpen: open }),
 
   cancel: () => {
     const { abortController, activeRunId } = get()

@@ -10,24 +10,7 @@ from .base import BaseLLMProvider
 class DeepSeekProvider(BaseLLMProvider):
     """DeepSeek provider using OpenAI-compatible API."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available DeepSeek models."""
-        return [
-            {
-                "id": "deepseek-v4-flash",
-                "name": "DeepSeek V4 Flash",
-                "description": "DeepSeek's conversational model",
-                "supports_thinking": True,
-                "thinking_locked": False  # Can enable/disable thinking
-            },
-            {
-                "id": "deepseek-v4-pro",
-                "name": "DeepSeek V4 Pro",
-                "description": "Advanced reasoning model with chain-of-thought",
-                "supports_thinking": True,
-                "thinking_locked": False  # Can enable/disable thinking
-            },
-        ]
+    provider_id = "deepseek"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""

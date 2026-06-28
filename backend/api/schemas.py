@@ -3,7 +3,7 @@ Pydantic schemas for API request and response models.
 """
 
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, List, Dict
+from typing import Any, Literal, Optional, List, Dict
 
 
 class ImageEditSource(BaseModel):
@@ -377,6 +377,14 @@ class SearchEngineUpdateResponse(BaseModel):
 # Provider Settings Schemas
 # =============================================================================
 
+class ModelConfig(BaseModel):
+    """Configuration for a single model within a provider."""
+    id: str = Field(..., description="Model ID used in API calls")
+    supports_thinking: bool = Field(default=False, description="Whether the model supports thinking mode")
+    thinking_locked: bool = Field(default=False, description="Whether thinking is always enabled")
+    is_image_model: bool = Field(default=False, description="Whether this model generates images")
+
+
 class ProviderConfig(BaseModel):
     """Configuration for a single provider."""
     api_key_masked: Optional[str] = Field(None, description="Masked API key for display")
@@ -386,8 +394,8 @@ class ProviderConfig(BaseModel):
     display_name: str = Field(..., description="Human-readable provider name")
     console_url: str = Field(..., description="URL to get an API key")
     default_base_url: Optional[str] = Field(None, description="Default base URL")
-    test_model: Optional[str] = Field(None, description="Model ID used for connection testing")
-    category: str = Field("llm", description="Provider category: 'llm' or 'tool'")
+    category: str = Field("llm", description="Provider category")
+    models: List[ModelConfig] = Field(default_factory=list, description="Configured models for this provider")
 
 
 class ProviderSettingsResponse(BaseModel):
@@ -415,3 +423,61 @@ class ProviderTestResponse(BaseModel):
     success: bool = Field(..., description="Whether the test passed")
     message: str = Field(..., description="Test result message")
     latency_ms: Optional[float] = Field(None, description="Response latency in milliseconds")
+
+
+class ProviderModelTestRequest(BaseModel):
+    """Request for testing a provider/model with unsaved credentials."""
+    provider_id: str = Field(..., description="Provider ID")
+    model_id: str = Field(..., description="Model ID to test")
+    api_key: str = Field(..., description="API key to use")
+    base_url: Optional[str] = Field(None, description="Optional base URL")
+    is_image_model: bool = Field(False, description="Whether the model is an image model")
+
+
+class WebSearchConfig(BaseModel):
+    """Web search configuration section."""
+    default_engine: str = Field(default="bailian", description="Default search engine: 'bailian' or 'tavily'")
+    bailian_api_key: Optional[str] = Field(None, description="Bailian/DashScope API key")
+    tavily_api_key: Optional[str] = Field(None, description="Tavily API key")
+
+
+class McpServerConfig(BaseModel):
+    """Single MCP server configuration."""
+    name: str = Field(..., description="Server name")
+    url: str = Field(..., description="Server URL")
+    transport: str = Field(default="sse", description="Transport type: 'sse' or 'stdio'")
+    api_key_env: Optional[str] = Field(None, description="Environment variable name containing the API key")
+    headers: Dict[str, str] = Field(default_factory=dict, description="Additional HTTP headers")
+
+
+class AgentControlConfig(BaseModel):
+    """Agent control configuration section."""
+    max_tool_concurrency: int = Field(default=5, ge=1, description="Maximum parallel tool executions")
+    simple_max_tool_iterations: int = Field(default=25, ge=1, description="Max iterations for simple chat")
+    coworking_max_tool_iterations: int = Field(default=25, ge=1, description="Max iterations for coworking chat")
+
+
+class AppConfig(BaseModel):
+    """Full application configuration."""
+    general: Dict[str, Any] = Field(default_factory=dict, description="General settings")
+    agents: AgentControlConfig = Field(default_factory=AgentControlConfig, description="Agent control settings")
+    web_search: WebSearchConfig = Field(default_factory=WebSearchConfig, description="Web search settings")
+    mcp: Dict[str, List[McpServerConfig]] = Field(default_factory=dict, description="MCP server settings")
+    providers: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Provider configurations")
+
+
+class ConfigResponse(BaseModel):
+    """Response for GET /settings/config."""
+    config: AppConfig = Field(..., description="Full application configuration")
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request for PUT /settings/config."""
+    config: AppConfig = Field(..., description="Full application configuration")
+
+
+class ConfigUpdateResponse(BaseModel):
+    """Response for PUT /settings/config."""
+    success: bool = Field(..., description="Whether the update was successful")
+    message: str = Field(..., description="Status message")
+    errors: Optional[List[str]] = Field(None, description="Validation errors if any")

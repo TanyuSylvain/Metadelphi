@@ -31,19 +31,7 @@ ASPECT_RATIO_TO_SIZE = {
 class OpenAIImageProvider(BaseLLMProvider):
     """OpenAI image generation provider using the /v1/images/generations endpoint."""
 
-    MODELS = [
-        {
-            "id": "gpt-image-2",
-            "name": "GPT Image 2",
-            "description": "OpenAI GPT Image 2 — native image generation",
-            "supports_thinking": False,
-            "thinking_locked": False,
-            "is_image_model": True,
-        },
-    ]
-
-    def get_available_models(self) -> List[Dict[str, str]]:
-        return self.MODELS
+    provider_id = "openai"
 
     def get_provider_name(self) -> str:
         return "OpenAI Image"

@@ -10,24 +10,7 @@ from .base import BaseLLMProvider
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini provider using OpenAI-compatible API."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available Gemini models."""
-        return [
-            {
-                "id": "gemini-3.1-pro-preview",
-                "name": "Gemini-3.1-pro-preview",
-                "description": "Most powerful Gemini with thinking",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
-            {
-                "id": "gemini-3-flash-preview",
-                "name": "Gemini-3-flash-preview",
-                "description": "Advanced Gemini model with thinking",
-                "supports_thinking": True,
-                "thinking_locked": False  # Can toggle thinking
-            },
-        ]
+    provider_id = "gemini"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""

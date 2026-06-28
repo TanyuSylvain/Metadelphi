@@ -10,24 +10,7 @@ from .base import BaseLLMProvider
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider using OpenAI API."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available OpenAI models."""
-        return [
-            {
-                "id": "gpt-5.5",
-                "name": "GPT-5.5",
-                "description": "Most capable GPT-5 model",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
-            {
-                "id": "gpt-5.4-mini",
-                "name": "GPT-5.4 Mini",
-                "description": "More efficient GPT-5 model for high-throughput workloads",
-                "supports_thinking": True,
-                "thinking_locked": False
-            },
-        ]
+    provider_id = "openai"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""

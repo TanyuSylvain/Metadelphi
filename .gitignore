@@ -1,6 +1,7 @@
 __pycache__
 .vscode
 .env
+config.toml
 .DS_Store
 *.db
 .venv

@@ -10,43 +10,7 @@ from .base import BaseLLMProvider
 class MistralProvider(BaseLLMProvider):
     """Mistral AI provider using native ChatMistralAI."""
 
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """Return available Mistral models."""
-        return [
-            {
-                "id": "mistral-large-latest",
-                "name": "Mistral Large",
-                "description": "Most capable Mistral model for complex tasks",
-                "supports_thinking": False
-            },
-            {
-                "id": "mistral-medium-latest",
-                "name": "Mistral Medium",
-                "description": "Balanced performance and cost",
-                "supports_thinking": False
-            },
-            {
-                "id": "mistral-small-latest",
-                "name": "Mistral Small",
-                "description": "Low cost and performance",
-                "supports_thinking": False
-            },
-            {
-                "id": "magistral-medium-latest",
-                "name": "Magistral Medium",
-                "description": "Frontier-class multi-modal reasoning model",
-                "supports_thinking": True,
-                "thinking_locked": True,
-            },
-            {
-                "id": "magistral-small-latest",
-                "name": "Magistral Small",
-                "description": "Small multi-modal reasoning model",
-                "supports_thinking": True,
-                "thinking_locked": True,
-            },
-
-        ]
+    provider_id = "mistral"
 
     def get_provider_name(self) -> str:
         """Return the provider name."""
