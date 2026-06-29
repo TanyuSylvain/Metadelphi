@@ -196,6 +196,90 @@ def print_status(quiet: bool = False) -> int:
     return 1
 
 
+def start_service() -> int:
+    if service_running():
+        print("Metadelphi service is already running.")
+        return 0
+
+    ensure_runtime_dirs()
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+
+    kwargs: dict = {
+        "cwd": APP_DIR,
+        "env": env,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+
+    try:
+        proc = subprocess.Popen([sys.executable, str(APP_DIR / "service_runner.py"), "run"], **kwargs)
+    except Exception as e:
+        print(f"Failed to start Metadelphi service: {e}")
+        return 1
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if service_running():
+            pid = read_pid()
+            print(f"Metadelphi service started (supervisor pid {pid}).")
+            return 0
+        if proc.poll() is not None:
+            print(f"Service supervisor exited early with code {proc.returncode}.")
+            return 1
+        time.sleep(0.5)
+
+    print("Metadelphi service is starting; use 'metadelphi status' to check progress.")
+    return 0
+
+
+def restart_service() -> int:
+    stop_service()
+    return start_service()
+
+
+def show_logs(follow: bool = False, lines: int = 50) -> int:
+    if not BACKEND_LOG.exists():
+        print(f"No backend log found at {BACKEND_LOG}")
+        return 1
+
+    try:
+        with BACKEND_LOG.open("r", encoding="utf-8", errors="replace") as handle:
+            all_lines = handle.readlines()
+            for line in all_lines[-lines:]:
+                print(line, end="")
+    except OSError as e:
+        print(f"Failed to read log: {e}")
+        return 1
+
+    if not follow:
+        return 0
+
+    try:
+        with BACKEND_LOG.open("r", encoding="utf-8", errors="replace") as handle:
+            handle.seek(0, os.SEEK_END)
+            while True:
+                where = handle.tell()
+                line = handle.readline()
+                if not line:
+                    time.sleep(0.5)
+                    handle.seek(where)
+                else:
+                    print(line, end="")
+    except KeyboardInterrupt:
+        return 0
+    except OSError as e:
+        print(f"Failed to follow log: {e}")
+        return 1
+
+
 def terminate_process(proc: subprocess.Popen[bytes], name: str) -> None:
     if proc.poll() is not None:
         return
@@ -280,10 +364,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("run", help="Run the Metadelphi background supervisor.")
 
+    subparsers.add_parser("start", help="Start the Metadelphi background service.")
+
+    subparsers.add_parser("stop", help="Stop the running service supervisor.")
+
+    subparsers.add_parser("restart", help="Restart the Metadelphi background service.")
+
     status_parser = subparsers.add_parser("status", help="Check service status.")
     status_parser.add_argument("--quiet", action="store_true", help="Suppress status output.")
 
-    subparsers.add_parser("stop", help="Stop the running service supervisor.")
+    logs_parser = subparsers.add_parser("logs", help="Show the backend log.")
+    logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output.")
+    logs_parser.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50).")
+
     return parser
 
 
@@ -293,10 +386,16 @@ def main() -> int:
 
     if args.command == "run":
         return run_supervisor()
-    if args.command == "status":
-        return print_status(quiet=args.quiet)
+    if args.command == "start":
+        return start_service()
     if args.command == "stop":
         return stop_service()
+    if args.command == "restart":
+        return restart_service()
+    if args.command == "status":
+        return print_status(quiet=args.quiet)
+    if args.command == "logs":
+        return show_logs(follow=args.follow, lines=args.lines)
 
     parser.error(f"Unsupported command: {args.command}")
     return 2

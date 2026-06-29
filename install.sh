@@ -86,6 +86,7 @@ echo ""
 
 # Navigate to script directory
 cd "$(dirname "$0")"
+APP_DIR="$(pwd)"
 
 # Check if virtual environment already exists
 if [ -d ".venv" ]; then
@@ -135,16 +136,59 @@ echo ""
 echo "✓ Dependencies installed successfully"
 echo ""
 
-# Run configuration wizard
-echo "Starting configuration wizard..."
-echo "Please configure at least one API key to use Metadelphi"
-echo ""
-$PYTHON_CMD installer/config_wizard.py
-
-if [ $? -ne 0 ]; then
-    echo "Configuration wizard failed or was cancelled."
-    echo "You can run it again later with: $PYTHON_CMD installer/config_wizard.py"
+# Build frontend if needed
+if [ ! -f "frontend/dist-react/index.html" ]; then
+    echo "Built frontend not found. Checking for Node.js..."
+    if command -v npm &> /dev/null; then
+        echo "Building React frontend..."
+        (cd frontend-react && npm install && npm run build)
+        if [ ! -f "frontend/dist-react/index.html" ]; then
+            echo "Warning: Frontend build did not produce frontend/dist-react/index.html."
+            echo "You can build it later with: cd frontend-react && npm install && npm run build"
+        else
+            echo "✓ Frontend built successfully"
+        fi
+    else
+        echo "Warning: Node.js/npm not found. Skipping frontend build."
+        echo "Install Node.js, then build with: cd frontend-react && npm install && npm run build"
+    fi
+    echo ""
 fi
+
+# Install global metadelphi CLI wrapper
+echo "Installing global 'metadelphi' command..."
+BIN_DIR="$HOME/.local/bin"
+
+mkdir -p "$BIN_DIR"
+
+CLI_WRAPPER_SOURCE="$APP_DIR/metadelphi"
+CLI_WRAPPER_TARGET="$BIN_DIR/metadelphi"
+
+if [ -f "$CLI_WRAPPER_TARGET" ] || [ -L "$CLI_WRAPPER_TARGET" ]; then
+    rm -f "$CLI_WRAPPER_TARGET"
+fi
+
+if ln -s "$CLI_WRAPPER_SOURCE" "$CLI_WRAPPER_TARGET" 2>/dev/null; then
+    echo "✓ Linked 'metadelphi' to $CLI_WRAPPER_TARGET"
+else
+    cp "$CLI_WRAPPER_SOURCE" "$CLI_WRAPPER_TARGET"
+    chmod +x "$CLI_WRAPPER_TARGET"
+    echo "✓ Copied 'metadelphi' to $CLI_WRAPPER_TARGET"
+fi
+
+# Warn if BIN_DIR is not on PATH
+case ":$PATH:" in
+    *":$BIN_DIR:"*)
+        echo "✓ $BIN_DIR is in your PATH"
+        ;;
+    *)
+        echo ""
+        echo "NOTE: $BIN_DIR is not in your PATH yet."
+        echo "Add the following line to your shell profile (e.g. ~/.bashrc or ~/.zshrc):"
+        echo "  export PATH=\"$BIN_DIR:\$PATH\""
+        echo "Then reload your profile or open a new terminal."
+        ;;
+esac
 
 echo ""
 
@@ -156,7 +200,7 @@ if [ $? -eq 0 ]; then
     echo "✓ Desktop launcher created"
 else
     echo "Warning: Failed to create desktop launcher"
-    echo "You can still launch Metadelphi by running: ./launcher.sh"
+    echo "You can still launch Metadelphi by running: metadelphi start"
 fi
 
 echo ""
@@ -175,16 +219,18 @@ echo "======================================"
 echo "  Installation Complete!"
 echo "======================================"
 echo ""
-echo "To start Metadelphi:"
-if [[ "$OS" == "MacOS" ]]; then
-    echo "  - Open Metadelphi from Launchpad or ~/Applications folder, or"
-elif [[ "$OS" == "Linux" ]]; then
-    echo "  - Use the desktop launcher, or"
-fi
-echo "  - Run: ./launcher.sh"
+echo "To start Metadelphi, run:"
+echo "  metadelphi start"
 echo ""
-echo "The application will open in your default browser at:"
-echo "  http://localhost:8000/"
+echo "Then open http://localhost:8000/ in your browser and click"
+echo "'Open Configuration' to add your API keys."
+echo ""
+echo "Useful commands:"
+echo "  metadelphi status   - check service status"
+echo "  metadelphi restart  - restart the service"
+echo "  metadelphi logs     - view backend logs"
+echo "  metadelphi stop     - stop the service"
+echo ""
 echo "To enable auto-start later, run:"
 echo "  ./setup_service.sh"
 echo ""

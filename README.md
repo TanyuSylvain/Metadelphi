@@ -16,47 +16,45 @@ A powerful, cross-platform application for comparing and interacting with multip
 
 ## 🚀 Quick Start Installation
 
+### macOS / Linux (one-line installer)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TanyuSylvain/metadelphi/main/get-metadelphi.sh | bash
+```
+
+Then open a new terminal and run:
+
+```bash
+metadelphi start
+```
+
+Finally, open **http://localhost:8000/** and click **Open Configuration** to add your API keys.
+
 ### Windows
-1. Download the Windows installer package (ZIP file)
-2. Right-click the ZIP file → "Extract All..." → Choose destination
-3. Open the extracted folder
-4. Double-click `install.bat`
-5. Follow the on-screen instructions
-6. Configure your API keys in the GUI wizard
-7. Optionally enable auto-start at login during install, or later with `setup_service.bat`
-8. Launch using the desktop shortcut or run `launcher.bat`
 
-### macOS
-1. Download the installer package (TAR.GZ file)
-2. Extract the archive: Double-click or run `tar -xzf metadelphi.tar.gz` in Terminal
-3. Open Terminal and navigate to the extracted directory: `cd metadelphi`
-4. Run: `./install.sh`
-5. Follow the on-screen instructions
-6. Configure your API keys in the GUI wizard
-7. Optionally enable auto-start at login during install, or later with `./setup_service.sh`
-8. Launch from **Launchpad** or **~/Applications/Metadelphi.app**
+Download and run `get-metadelphi.bat` from the latest release, or use PowerShell:
 
-### Linux
-1. Download the installer package (TAR.GZ file)
-2. Extract the archive: `tar -xzf metadelphi.tar.gz`
-3. Navigate to the extracted directory: `cd metadelphi`
-4. Run: `./install.sh`
-5. Follow the on-screen instructions
-6. Configure your API keys in the GUI wizard
-7. Optionally enable auto-start at login during install, or later with `./setup_service.sh`
-8. Launch from your **Application Menu** or Desktop launcher
+```powershell
+powershell -Command "& { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/TanyuSylvain/metadelphi/main/get-metadelphi.bat' -OutFile '$env:TEMP\get-metadelphi.bat'; & '$env:TEMP\get-metadelphi.bat' }"
+```
 
-**That's it!** The installer automatically:
-- ✅ Checks for Python 3.10+ (guides you to install if missing)
+Then open a new Command Prompt and run:
+
+```bat
+metadelphi start
+```
+
+Finally, open **http://localhost:8000/** and click **Open Configuration** to add your API keys.
+
+### What the installer does
+
+- ✅ Checks for Python 3.10+ and guides you to install it if missing
 - ✅ Creates an isolated virtual environment
-- ✅ Installs all dependencies (including SOCKS proxy support)
-- ✅ Launches a GUI wizard to configure API keys
-- ✅ Creates native application launchers:
-  - **macOS**: Metadelphi.app in ~/Applications (appears in Launchpad)
-  - **Linux**: Desktop entry in Application Menu
-  - **Windows**: Desktop shortcut
+- ✅ Installs all Python dependencies
+- ✅ Builds the React frontend if needed
+- ✅ Installs the global `metadelphi` command
+- ✅ Creates native application launchers (desktop shortcut / app icon)
 - ✅ Optionally registers a per-user auto-start service at login
-- ✅ Opens the application in your browser automatically
 
 The application will be available at: **http://localhost:8000/**
 
@@ -67,6 +65,20 @@ If you skip auto-start during installation, you can enable it later with:
 To remove auto-start later:
 - **Windows**: `remove_service.bat`
 - **macOS/Linux**: `./remove_service.sh`
+
+### `metadelphi` CLI
+
+After installation, use the `metadelphi` command from any terminal:
+
+| Command | Description |
+|---------|-------------|
+| `metadelphi start` | Start the background service |
+| `metadelphi stop` | Stop the background service |
+| `metadelphi restart` | Restart the background service |
+| `metadelphi status` | Check whether the service is running |
+| `metadelphi logs` | Show the latest backend log lines |
+| `metadelphi logs -f` | Follow the backend log in real time |
+| `metadelphi config` | Open the web UI in your browser |
 
 ---
 
@@ -127,7 +139,7 @@ Metadelphi supports **7 major AI providers** with multiple models:
 - **📋 Clean Copy**: One-click copy of purified content (removes redundant spaces, blank lines, and normalizes Chinese-English formatting)
 - **📱 Responsive UI**: Works on desktop, tablet, and mobile
 - **🔌 REST API**: Full programmatic access with OpenAPI docs
-- **🔐 Secure**: API keys stored locally in `.env` file, locally stored chat history
+- **🔐 Secure**: API keys stored locally in `config.toml`, locally stored chat history
 - **⚡ Fast**: Optimized streaming and async processing
 
 ---
@@ -213,19 +225,28 @@ pip install -r requirements.txt
 
 ### 4. Configure API Keys
 
-**Option A: Use the GUI Configuration Wizard (Recommended)**
+**Option A: Use the Web Configuration Panel (Recommended)**
+
+Start the server and open the app in your browser:
+
+```bash
+metadelphi start
+```
+
+Then go to **http://localhost:8000/**, click **Open Configuration** in the header, and add your API keys. The web panel supports:
+- Provider API keys and base URLs
+- Model lists and model-specific options
+- Web search backends (Bailian / Tavily)
+- MCP server configuration
+- Agent tool-execution limits
+
+**Option B: Use the Legacy GUI Configuration Wizard**
 
 ```bash
 python installer/config_wizard.py
 ```
 
-The wizard provides:
-- Easy-to-use graphical interface
-- Direct links to get API keys
-- Password-style entry with show/hide toggle
-- Validation and status tracking
-
-**Option B: Manual Configuration**
+**Option C: Manual Configuration**
 
 Copy `.env.template` to `.env` and add your API keys:
 
@@ -274,15 +295,13 @@ GEMINI_BASE_URL=https://generativelanguage.googleapis.com
 ### 5. Launch the Application
 
 ```bash
-# Linux/macOS
-./launcher.sh
-
-# Windows
-launcher.bat
+metadelphi start
 ```
 
 The application will open automatically in your browser at:
 **http://localhost:8000/**
+
+If you prefer the legacy launcher scripts, you can still use `./launcher.sh` or `launcher.bat` from the install directory.
 
 ---
 
@@ -405,13 +424,23 @@ frontend/dist-react/                 # Built frontend served by FastAPI
 
 ```
 installer/
-├── config_wizard.py                 # GUI configuration wizard (Tkinter)
+├── config_wizard.py                 # Legacy GUI configuration wizard (Tkinter)
 ├── create_launcher.py               # Desktop launcher creator (Unix)
 ├── create_shortcut.py               # Desktop shortcut creator (Windows)
 ├── generate_icons.py                # Icon generator
 ├── icon.png                         # Application icon (PNG)
 └── icon.ico                         # Application icon (Windows ICO)
+
+get-metadelphi.sh                    # One-line remote installer for macOS/Linux
+get-metadelphi.bat                   # One-line remote installer for Windows
+metadelphi                           # Global CLI wrapper script (Unix)
+metadelphi.bat                       # Global CLI wrapper script (Windows)
 ```
+
+Release packages are created with `./create_distribution.sh <version>`. The resulting
+`Metadelphi-Installer-vX.Y.Z.tar.gz` and `Metadelphi-Installer-vX.Y.Z-Windows.zip` are
+uploaded to GitHub Releases, and the `get-metadelphi.sh` / `get-metadelphi.bat` scripts
+download them automatically.
 
 ---
 

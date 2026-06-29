@@ -8,6 +8,7 @@ echo ======================================
 echo.
 
 cd /d "%~dp0"
+set "APP_DIR=%CD%"
 
 REM Check if Python is installed (try python, then python3, then py)
 echo Checking Python installation...
@@ -126,17 +127,32 @@ echo.
 echo [OK] Dependencies installed successfully
 echo.
 
-REM Run configuration wizard
-echo Starting configuration wizard...
-echo Please configure at least one API key to use Metadelphi
-echo.
-%PYTHON_CMD% installer\config_wizard.py
-
-if errorlevel 1 (
-    echo Configuration wizard failed or was cancelled.
-    echo You can run it again later with: %PYTHON_CMD% installer\config_wizard.py
+REM Build frontend if needed
+if not exist "frontend\dist-react\index.html" (
+    echo Built frontend not found. Checking for Node.js...
+    node --version >nul 2>&1
+    if errorlevel 1 (
+        echo Warning: Node.js not found. Skipping frontend build.
+        echo Install Node.js, then build with:
+        echo   cd frontend-react ^&^& npm install ^&^& npm run build
+    ) else (
+        echo Building React frontend...
+        cd frontend-react
+        call npm install
+        call npm run build
+        cd ..
+        if exist "frontend\dist-react\index.html" (
+            echo [OK] Frontend built successfully
+        ) else (
+            echo Warning: Frontend build did not produce frontend\dist-react\index.html.
+        )
+    )
+    echo.
 )
 
+REM Add APP_DIR to user PATH so metadelphi.bat is callable as "metadelphi"
+echo Adding Metadelphi to your PATH...
+powershell -NoProfile -Command "& {$p=[Environment]::GetEnvironmentVariable('Path','User'); if ($p -notlike '*%APP_DIR%*') { [Environment]::SetEnvironmentVariable('Path', $p + ';%APP_DIR%', 'User'); Write-Host '[OK] Added %APP_DIR% to user PATH'} else { Write-Host '[OK] %APP_DIR% is already in user PATH'} }"
 echo.
 
 REM Create desktop shortcut
@@ -145,7 +161,7 @@ echo Creating desktop shortcut...
 
 if errorlevel 1 (
     echo Warning: Failed to create desktop shortcut
-    echo You can still launch Metadelphi by running: launcher.bat
+    echo You can still launch Metadelphi by running: metadelphi start
 ) else (
     echo [OK] Desktop shortcut created
 )
@@ -168,14 +184,23 @@ echo ======================================
 echo   Installation Complete!
 echo ======================================
 echo.
-echo To start Metadelphi:
-echo   - Use the "Metadelphi" shortcut on your desktop, or
-echo   - Run: launcher.bat
+echo To start Metadelphi, run:
+echo   metadelphi start
 echo.
-echo The application will open in your default browser at:
-echo   http://localhost:8000/
+echo Then open http://localhost:8000/ in your browser and click
+echo 'Open Configuration' to add your API keys.
+echo.
+echo Useful commands:
+echo   metadelphi status   - check service status
+echo   metadelphi restart  - restart the service
+echo   metadelphi logs     - view backend logs
+echo   metadelphi stop     - stop the service
+echo.
 echo To enable auto-start later, run:
 echo   setup_service.bat
+echo.
+echo NOTE: If 'metadelphi' is not recognized, open a new Command Prompt
+echo       so the updated PATH takes effect.
 echo.
 
 REM Ask if user wants to launch now

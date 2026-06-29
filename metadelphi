@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Global Metadelphi CLI wrapper.
+# This script is symlinked or copied onto the user's PATH by install.sh.
+
+set -e
+
+# Resolve the project directory from this script's real location.
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_PATH" ]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" == /* ]] || SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
+SERVICE_RUNNER="$PROJECT_DIR/service_runner.py"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+    echo "Error: Metadelphi virtual environment not found at $PROJECT_DIR/.venv"
+    echo "Please run the installer first."
+    exit 1
+fi
+
+if [ ! -f "$SERVICE_RUNNER" ]; then
+    echo "Error: Metadelphi service runner not found at $SERVICE_RUNNER"
+    exit 1
+fi
+
+COMMAND="${1:-}"
+shift 2>/dev/null || true
+
+case "$COMMAND" in
+    start|stop|restart|status|logs|run)
+        exec "$PYTHON_BIN" "$SERVICE_RUNNER" "$COMMAND" "$@"
+        ;;
+    config)
+        URL="http://localhost:8000/"
+        echo "Opening $URL in your browser..."
+        if command -v open >/dev/null 2>&1; then
+            open "$URL"
+        elif command -v xdg-open >/dev/null 2>&1; then
+            xdg-open "$URL" 2>/dev/null || true
+        else
+            echo "Please open $URL manually."
+        fi
+        ;;
+    help|--help|-h|"")
+        cat <<EOF
+Metadelphi CLI
+
+Usage: metadelphi <command>
+
+Commands:
+  start     Start the background Metadelphi service.
+  stop      Stop the background Metadelphi service.
+  restart   Restart the background Metadelphi service.
+  status    Check whether the service is running.
+  logs      Show the backend log (use -f to follow).
+  config    Open the Metadelphi web UI in your browser.
+  help      Show this help message.
+
+Examples:
+  metadelphi start
+  metadelphi status
+  metadelphi logs -f
+EOF
+        ;;
+    *)
+        echo "Unknown command: $COMMAND"
+        echo "Run 'metadelphi help' for usage."
+        exit 1
+        ;;
+esac

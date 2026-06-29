@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Layout, Typography, message as antMessage } from 'antd'
+import { Layout, Typography, Button, message as antMessage } from 'antd'
 import { conversationsApi, historyToMessages } from './api/conversations'
 import { useAppStore } from './store/appStore'
 import { useChatStore } from './store/chatStore'
@@ -15,6 +15,7 @@ import { useImageStream } from './hooks/useImageStream'
 import { generateUUID } from './utils/uuid'
 
 import { useCoworkingStore } from './store/coworkingStore'
+import { SettingOutlined } from '@ant-design/icons'
 import ConversationList from './components/sidebar/ConversationList'
 import ModeSegmented from './components/header/ModeSegmented'
 import ModelSelect from './components/header/ModelSelect'
@@ -498,7 +499,40 @@ export default function App() {
                 />
 
                 {/* Empty state centred in the conversation window */}
-                {messages.length === 0 && (
+                {messages.length === 0 && models.length === 0 && !modelsLoading && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#9ca3af',
+                      pointerEvents: 'auto',
+                      padding: 24,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🧠</div>
+                    <Typography.Title level={4} style={{ margin: '0 0 8px', color: '#374151' }}>
+                      Welcome to Metadelphi
+                    </Typography.Title>
+                    <Typography.Text style={{ fontSize: 14, color: '#6b7280', maxWidth: 420 }}>
+                      Add at least one API key to start chatting. You can configure everything in the web panel — no need to edit files by hand.
+                    </Typography.Text>
+                    <Button
+                      type="primary"
+                      icon={<SettingOutlined />}
+                      size="large"
+                      style={{ marginTop: 24 }}
+                      onClick={() => setConfigOpen(true)}
+                    >
+                      Open Configuration
+                    </Button>
+                  </div>
+                )}
+                {messages.length === 0 && (models.length > 0 || modelsLoading) && (
                   <div
                     style={{
                       position: 'absolute',
