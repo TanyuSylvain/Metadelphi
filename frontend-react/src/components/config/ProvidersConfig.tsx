@@ -12,6 +12,7 @@ import {
 import { DeleteOutlined, ThunderboltOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import type { ProviderConfig, ModelConfig } from '../../types/models'
 import { modelsApi } from '../../api/models'
+import { getProviderLogoSrcById } from '../../utils/providerLogos'
 
 const PROVIDER_OPTIONS = [
   { value: 'mistral', label: 'Mistral AI' },
@@ -142,6 +143,7 @@ export default function ProvidersConfig({ providers, errors, onChange }: Props) 
         const provider = providers[providerId]
         const meta = PROVIDER_META[providerId]
         const modelsError = errors[`providers.${providerId}.models`]
+        const logoSrc = getProviderLogoSrcById(providerId)
 
         return (
           <Card
@@ -149,29 +151,44 @@ export default function ProvidersConfig({ providers, errors, onChange }: Props) 
             style={{ marginBottom: 16, borderRadius: 12 }}
             title={
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 9,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: '#fff',
-                    background:
-                      providerId === 'openai'
-                        ? '#10a37f'
-                        : providerId === 'gemini'
-                        ? 'linear-gradient(135deg,#4285f4,#34a853,#fbbc05,#ea4335)'
-                        : providerId === 'mistral'
-                        ? '#ff6b35'
-                        : '#4a9eff',
-                  }}
-                >
-                  {providerId[0].toUpperCase()}
-                </div>
+                {logoSrc ? (
+                  <img
+                    src={logoSrc}
+                    alt={meta.display_name}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 9,
+                      objectFit: 'contain',
+                      background: '#fff',
+                      border: '1px solid #f0f0f0',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 9,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: '#fff',
+                      background:
+                        providerId === 'openai'
+                          ? '#10a37f'
+                          : providerId === 'gemini'
+                          ? 'linear-gradient(135deg,#4285f4,#34a853,#fbbc05,#ea4335)'
+                          : providerId === 'mistral'
+                          ? '#ff6b35'
+                          : '#4a9eff',
+                    }}
+                  >
+                    {providerId[0].toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <Typography.Text strong style={{ fontSize: 15, color: '#111827' }}>
                     {meta.display_name}

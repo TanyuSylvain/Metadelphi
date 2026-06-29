@@ -66,37 +66,16 @@ const MessagesPane = React.memo(function MessagesPane({
       }}
     >
       <div ref={messagesContentRef} style={{ minHeight: '100%' }}>
-        {messages.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: '#9ca3af',
-            }}
-          >
-            <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🧠</div>
-            <Typography.Text style={{ fontSize: 16, color: '#9ca3af' }}>
-              Start a conversation
-            </Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 13, marginTop: 6 }}>
-              Select a model and send a message
-            </Typography.Text>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <MessageItem
-              key={msg.id}
-              message={msg}
-              markdownEnabled={markdownEnabled}
-              onDebateClick={onDebateClick}
-              selectedImageEditSourceId={selectedImageEditSourceId}
-              onImageEditToggle={onImageEditToggle}
-            />
-          ))
-        )}
+        {messages.map((msg) => (
+          <MessageItem
+            key={msg.id}
+            message={msg}
+            markdownEnabled={markdownEnabled}
+            onDebateClick={onDebateClick}
+            selectedImageEditSourceId={selectedImageEditSourceId}
+            onImageEditToggle={onImageEditToggle}
+          />
+        ))}
       </div>
     </div>
   )
@@ -116,6 +95,7 @@ export default function App() {
   const setConversationId = useChatStore((s) => s.setConversationId)
   const setMessages = useChatStore((s) => s.setMessages)
   const clearMessages = useChatStore((s) => s.clearMessages)
+  const messages = useChatStore((s) => s.messages)
   const imageEditSource = useChatStore((s) => s.imageEditSource)
   const setImageEditSource = useChatStore((s) => s.setImageEditSource)
   const clearImageEditSource = useChatStore((s) => s.clearImageEditSource)
@@ -485,6 +465,7 @@ export default function App() {
                   flexDirection: 'column',
                   overflow: 'hidden',
                   background: '#f5f5f5',
+                  position: 'relative',
                 }}
               >
                 {/* Messages */}
@@ -515,6 +496,30 @@ export default function App() {
                   imageEditSource={imageEditSource}
                   onClearImageEditSource={clearImageEditSource}
                 />
+
+                {/* Empty state centred in the conversation window */}
+                {messages.length === 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#9ca3af',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🧠</div>
+                    <Typography.Text style={{ fontSize: 16, color: '#9ca3af' }}>
+                      Start a conversation
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 13, marginTop: 6 }}>
+                      Select a model and send a message
+                    </Typography.Text>
+                  </div>
+                )}
               </div>
 
               {/* Panel divider */}

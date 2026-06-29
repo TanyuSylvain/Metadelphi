@@ -32,3 +32,9 @@ export function getProviderLogoSrc(modelId: string): string | null {
   const providerKey = getProviderKey(modelId)
   return providerKey ? PROVIDER_LOGOS[providerKey] ?? null : null
 }
+
+export function getProviderLogoSrcById(providerId: string): string | null {
+  const key = providerId.toLowerCase()
+  const logoKey = key === 'glm' ? 'zhipu' : key
+  return PROVIDER_LOGOS[logoKey] ?? null
+}
