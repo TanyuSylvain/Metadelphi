@@ -118,20 +118,20 @@ Metadelphi supports **7 major AI providers** with multiple models:
 
 | Provider | Models | Description |
 |----------|--------|-----------|
-| **Mistral AI** | Mistral Large, Medium, Small, and Magistral Medium, Small | French AI, multilingual |
-| **Alibaba Qwen** | Qwen3 Max, Plus, 235b, DeepSeek V3.2, GLM-4.7, Kimi K2 | Qwen family cutting-edge models |
-| **Zhipu GLM** | GLM 4.7, GLM 4.6 | Zhipu latest general models |
-| **MiniMax** | MiniMax-M2.1 | I love it, top 1, suitable for deep search |
-| **DeepSeek** | DeepSeek Chat, Reasoner (V3.2) | Use it if you like |
-| **OpenAI-compatible** | GPT-5.2 | Still testing |
-| **Google Gemini** | Gemini 3 pro preview, flash | Still testing |
+| **Mistral AI** | `mistral-large-latest`, `mistral-medium-latest`, `mistral-small-latest`, `magistral-medium-latest`, `magistral-small-latest` | French AI, multilingual |
+| **Alibaba Qwen** | `qwen3-max`, `qwen3.6-plus`, `qwen3-235b-a22b`, `qwen3.5-flash`, `qwen3-coder-plus`, `deepseek-v3.2`, `glm-5`, `kimi-k2.5` | Qwen family and partner models |
+| **Zhipu GLM** | `glm-5`, `glm-4.7` | Zhipu latest general models |
+| **MiniMax** | `MiniMax-M2.7-highspeed` | Top-tier deep-search model |
+| **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | DeepSeek reasoning models |
+| **OpenAI-compatible** | `gpt-5.5`, `gpt-5.4-mini`, `gpt-image-2` | OpenAI and compatible endpoints |
+| **Google Gemini** | `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-image-preview`, `gemini-2.5-flash-image` | Gemini reasoning and image models |
 
 ### 🎨 Core Features
 
 - **🔄 Real-time Streaming**: See responses as they're generated
 - **💭 Thinking Control**: Enable or disable chain-of-thought reasoning; collapsible `<think>` sections keep the UI clean
 - **⛔ Cancel**: Stop any in-progress streaming request at any time
-- **🌐 Web Search**: MCP-powered web search with source citations, available in Simple and Coworking modes
+- **🌐 Web Search**: Configurable web search (Bailian / Tavily) with source citations, available in Simple and Coworking modes
 - **🔌 MCP Server Support**: Configure external MCP servers for tools like web search and web parsing
 - **💾 Conversation History**: Persistent storage with SQLite
 - **🎨 Markdown Rendering**: Beautiful formatting for code, tables, and text
@@ -148,49 +148,12 @@ Metadelphi supports **7 major AI providers** with multiple models:
 
 - **Python 3.10 or higher** (installer will check and guide you)
 - **Internet connection** (for installing dependencies and API calls)
-- **At least one LLM provider API key** (see below)
 
 ### Supported Operating Systems
 - Windows 10/11
 - macOS 12+ (Monterey or later)
 - Ubuntu 20.04/22.04/24.04
 - Other Linux distributions with Python 3.10+
-
----
-
-## 🔑 Getting API Keys
-
-Each provider requires an API key. Most offer **free tiers** or trial credits:
-
-1. **Mistral AI**
-   - Get key: https://console.mistral.ai/
-   - Free tier available
-
-2. **Alibaba Qwen (DashScope)**
-   - Get key: https://dashscope.aliyuncs.com/
-   - Registration required
-
-3. **Zhipu GLM**
-   - Get key: https://open.bigmodel.cn/
-   - Chinese registration
-
-4. **MiniMax**
-   - Get key: https://www.minimaxi.com/
-   - Free credits available
-
-5. **DeepSeek**
-   - Get key: https://platform.deepseek.com/
-   - Competitive pricing
-
-6. **OpenAI**
-   - Get key: https://platform.openai.com/api-keys
-   - Pay-as-you-go pricing
-
-7. **Google Gemini**
-   - Get key: https://makersuite.google.com/app/apikey
-   - Free tier available
-
-> 💡 **Tip**: You only need ONE API key to start, but more providers give you better comparisons!
 
 ---
 
@@ -201,7 +164,7 @@ If you prefer manual setup or need custom configuration:
 ### 1. Clone or Download
 
 ```bash
-git clone https://github.com/your-repo/metadelphi.git
+git clone https://github.com/TanyuSylvain/metadelphi.git
 cd metadelphi
 ```
 
@@ -223,85 +186,61 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 4. Configure API Keys
-
-**Option A: Use the Web Configuration Panel (Recommended)**
-
-Start the server and open the app in your browser:
+### 4. Build the Frontend
 
 ```bash
-metadelphi start
+cd frontend-react
+npm install
+npm run build
+cd ..
 ```
 
-Then go to **http://localhost:8000/**, click **Open Configuration** in the header, and add your API keys. The web panel supports:
-- Provider API keys and base URLs
-- Model lists and model-specific options
-- Web search backends (Bailian / Tavily)
-- MCP server configuration
-- Agent tool-execution limits
+The built files are placed in `frontend/dist-react/` and served by the backend.
 
-**Option B: Use the Legacy GUI Configuration Wizard**
+### 5. Configuration (Optional)
 
-```bash
-python installer/config_wizard.py
-```
-
-**Option C: Manual Configuration**
-
-Copy `.env.template` to `.env` and add your API keys:
+Configuration lives in `config.toml` at the project root. Create it from the template:
 
 ```bash
 # Linux/macOS
-cp .env.template .env
+cp config.toml.template config.toml
 
 # Windows
-copy .env.template .env
+copy config.toml.template config.toml
 ```
 
-Then edit `.env` with your preferred text editor:
+Then edit `config.toml` with your preferred text editor. At minimum, fill in the API keys for the providers you want to use.
+
+You can also add or edit the `[[providers.*.models]]` tables to control which models are available.
+
+All the configurations can also be completed in the GUI. 
+
+### 6. Launch the Application
+
+From the project directory, start the local launcher:
 
 ```bash
-# Mistral AI
-MISTRAL_API_KEY=your_key_here
+# Linux/macOS
+./launcher.sh
 
-# Alibaba Qwen (DashScope)
-QWEN_API_KEY=your_key_here
-QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-
-# Zhipu GLM
-GLM_API_KEY=your_key_here
-GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-
-# MiniMax
-MINIMAX_API_KEY=your_key_here
-MINIMAX_BASE_URL=https://api.minimax.io/v1
-
-# DeepSeek
-DEEPSEEK_API_KEY=your_key_here
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-
-# OpenAI or OpenAI-compatible
-OPENAI_API_KEY=your_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Google Gemini
-GEMINI_API_KEY=your_key_here
-GEMINI_BASE_URL=https://generativelanguage.googleapis.com
-
-# MCP Servers for web search and web parsing (optional, JSON array)
-# MCP_SERVERS='[{"name":"websearch","url":"<server-url>","transport":"sse","api_key":"<optional-key>"}]'
-```
-
-### 5. Launch the Application
-
-```bash
-metadelphi start
+# Windows
+launcher.bat
 ```
 
 The application will open automatically in your browser at:
 **http://localhost:8000/**
 
-If you prefer the legacy launcher scripts, you can still use `./launcher.sh` or `launcher.bat` from the install directory.
+If you want the global `metadelphi` command available from any terminal, run the installer instead:
+
+```bash
+# Linux/macOS
+./install.sh
+
+# Windows
+install.bat
+```
+
+Then you can use `metadelphi start` from a new terminal.
 
 ---
 
@@ -340,14 +279,25 @@ The agent has access to:
 
 ### Enabling Web Search
 
-Web search is powered by MCP servers. To enable it, set `MCP_SERVERS` in your `.env` file:
+Web search is configured in `config.toml` under the `[web_search]` section. The simplest option is to add a Bailian (DashScope) API key:
 
-```bash
-# JSON array of MCP server configurations
-MCP_SERVERS='[{"name":"websearch","url":"<your-mcp-server-url>","transport":"sse"}]'
+```toml
+[web_search]
+default_engine = "bailian"
+bailian_api_key = "your_bailian_api_key"
+tavily_api_key = "your_tavily_api_key"  # optional alternative
 ```
 
-Once configured, a **Search** toggle appears in Simple and Coworking modes.
+Once a search backend is configured, a **Search** toggle appears in Simple and Coworking modes.
+
+For additional tool capabilities, you can also configure MCP servers under the `[mcp]` table:
+
+```toml
+[[mcp.servers]]
+name = "websearch"
+url = "https://your-mcp-server-url/sse"
+transport = "sse"
+```
 
 
 ### Managing Conversations
@@ -359,91 +309,6 @@ Once configured, a **Search** toggle appears in Simple and Coworking modes.
 
 ---
 
-## 🏗️ Architecture
-
-### Backend (Python/FastAPI)
-
-```
-backend/
-├── main.py                          # FastAPI application entry point
-├── config.py                        # Configuration and environment variables
-├── api/
-│   ├── routes/
-│   │   ├── chat.py                  # Simple streaming chat endpoint
-│   │   ├── multi_agent_chat.py      # Multi-agent debate endpoint
-│   │   ├── coworking_chat.py        # Coworking agent endpoint (NEW)
-│   │   ├── run_control.py           # Cancel active streaming runs (NEW)
-│   │   ├── conversations.py         # Conversation CRUD operations
-│   │   ├── models.py                # List available models
-│   │   └── health.py                # Health check endpoint
-│   ├── run_control.py               # RunManager for cancellation state (NEW)
-│   └── schemas.py                   # Pydantic data models
-├── core/
-│   ├── multi_agent.py               # LangGraph workflow orchestration
-│   ├── multi_agent_state.py         # State management for debates
-│   ├── coworking_agent.py           # LangGraph tool-calling coworking agent (NEW)
-│   ├── coworking_state.py           # Coworking session state (NEW)
-│   ├── coworking_prompts.py         # System prompts for coworking agent (NEW)
-│   ├── run_manager.py               # Cancellable run lifecycle management (NEW)
-│   ├── conversation_mode_manager.py # Mode switching logic
-│   └── prompts.py                   # System prompts for debate agents
-├── tools/
-│   ├── workspace_tools.py           # Sandboxed file/shell tools for coworking (NEW)
-│   └── web_search.py                # MCP-backed web search tools (NEW)
-├── providers/
-│   ├── factory.py                   # LLM provider factory
-│   ├── base.py                      # Base provider interface
-│   ├── registry.py                  # Provider registration
-│   ├── mistral.py                   # Mistral AI integration
-│   ├── qwen.py                      # Qwen/DashScope integration
-│   ├── glm.py                       # Zhipu GLM integration
-│   ├── minimax.py                   # MiniMax integration
-│   ├── deepseek.py                  # DeepSeek integration
-│   ├── openai_compatible.py         # OpenAI-compatible APIs
-│   └── gemini.py                    # Google Gemini integration
-├── storage/
-│   ├── base.py                      # Storage interface
-│   ├── sqlite.py                    # SQLite implementation
-│   └── memory.py                    # In-memory storage (testing)
-└── utils/                           # Utility functions
-```
-
-### Frontend (React/Vite)
-
-```
-frontend-react/
-├── src/                             # React application source
-├── index.html                       # Vite HTML entry point
-├── package.json                     # Frontend scripts and dependencies
-└── vite.config.ts                   # Builds into frontend/dist-react
-
-frontend/dist-react/                 # Built frontend served by FastAPI
-```
-
-### Installation System
-
-```
-installer/
-├── config_wizard.py                 # Legacy GUI configuration wizard (Tkinter)
-├── create_launcher.py               # Desktop launcher creator (Unix)
-├── create_shortcut.py               # Desktop shortcut creator (Windows)
-├── generate_icons.py                # Icon generator
-├── icon.png                         # Application icon (PNG)
-└── icon.ico                         # Application icon (Windows ICO)
-
-get-metadelphi.sh                    # One-line remote installer for macOS/Linux
-get-metadelphi.bat                   # One-line remote installer for Windows
-metadelphi                           # Global CLI wrapper script (Unix)
-metadelphi.bat                       # Global CLI wrapper script (Windows)
-```
-
-Release packages are created with `./create_distribution.sh <version>`. The resulting
-`Metadelphi-Installer-vX.Y.Z.tar.gz` and `Metadelphi-Installer-vX.Y.Z-Windows.zip` are
-uploaded to GitHub Releases, and the `get-metadelphi.sh` / `get-metadelphi.bat` scripts
-download them automatically.
-
----
-
 ## 🔌 API Documentation
 
 Full interactive API documentation is available at:
@@ -452,136 +317,91 @@ Full interactive API documentation is available at:
 ### Key Endpoints
 
 #### Chat Endpoints
+- `POST /chat/` - Simple chat (complete response)
 - `POST /chat/stream` - Simple streaming chat
   ```json
   {
     "message": "Your question here",
-    "provider_name": "mistral",
-    "model_name": "mistral-large-latest",
+    "model": "mistral-large-latest",
     "conversation_id": "optional-uuid"
   }
   ```
-
-- `POST /chat/multi-agent` - Multi-agent debate mode
+- `POST /chat/image/stream` - Image generation streaming
+- `POST /chat/multi-agent/` - Multi-agent debate (complete response)
+- `POST /chat/multi-agent/stream` - Multi-agent debate streaming
   ```json
   {
     "message": "Your question here",
-    "moderator_model": "mistral-large-latest",
-    "expert_model": "qwen-max",
-    "critic_model": "glm-4",
+    "models": {
+      "moderator": "mistral-large-latest",
+      "expert": "qwen-max",
+      "critic": "glm-4-plus"
+    },
     "max_iterations": 3,
     "score_threshold": 80
   }
   ```
-
 - `POST /chat/coworking/stream` - Coworking agent with tool calling
   ```json
   {
     "message": "Write a Python script that...",
-    "model_id": "qwen-max",
+    "model": "qwen-max",
     "workspace_path": "/path/to/your/workspace",
     "conversation_id": "optional-uuid"
   }
   ```
-
+- `GET /chat/coworking/select-workspace` - Open native folder picker
+- `GET /chat/coworking/session-state` - Get coworking file-tracking state
+- `GET /chat/coworking/files` - Download a file from the workspace
+- `POST /chat/coworking/open-file` - Open a workspace file with the default app
 - `POST /chat/runs/{run_id}/cancel` - Cancel an active streaming run
 
 #### Model Management
-- `GET /models/` - List all available models
-- `GET /models/{provider_name}` - List models for specific provider
+- `GET /models` - List all available models
+- `GET /models/providers` - List all providers
+- `GET /models/providers/{provider_name}` - Get provider info and models
+- `GET /models/{model_id}/provider` - Find provider for a model ID
 
 #### Conversation Management
-- `GET /conversations` - List all conversations
-- `POST /conversations` - Create new conversation
-- `GET /conversations/{id}` - Get conversation details
-- `DELETE /conversations/{id}` - Delete conversation
+- `GET /conversations/` - List all conversations
+- `POST /conversations/` - Create new conversation
+- `GET /conversations/{conversation_id}` - Get conversation history
+- `GET /conversations/{conversation_id}/info` - Get conversation metadata
+- `DELETE /conversations/{conversation_id}` - Delete conversation
+- `DELETE /conversations/` - Delete all conversations
+- `POST /conversations/{conversation_id}/switch-mode` - Switch conversation mode
+
+#### Settings & Configuration
+- `GET /settings/config` - Get full application config
+- `PUT /settings/config` - Update and persist full config
+- `GET /settings/providers` - Get provider settings with masked keys
+- `POST /settings/providers/test-model` - Test a provider/model
+- `POST /settings/providers/{provider_id}/models/{model_id}/test` - Test saved provider/model
+- `GET /settings/search-engine` - Get search engine status
+- `PUT /settings/search-engine` - Update default search engine
 
 #### Health & Monitoring
 - `GET /health` - Backend health check
-- `GET /` - API information
+- `GET /info` - API information
 
 ---
 
-## 🐛 Troubleshooting
-
-### Installation Issues
-
-**Problem: Python not found**
-- **Windows**: Install from https://python.org (check "Add Python to PATH")
-- **macOS**: `brew install python@3.11`
-- **Linux**: `sudo apt install python3.11 python3.11-venv python3-pip`
-
-**Problem: Tkinter not available (Linux)**
-```bash
-sudo apt install python3-tk
-```
-
-**Problem: Permission denied (Unix)**
-```bash
-chmod +x install.sh launcher.sh
-```
-
-**Problem: Virtual environment creation fails**
-- Ensure `python3-venv` is installed (Linux)
-- Check disk space availability
-- Try running with administrator/sudo privileges
-
-### Runtime Issues
-
-**Problem: Port already in use**
-- Check if port 8000 is occupied
-- Stop conflicting services
-- Change ports in `backend/config.py` if needed
-
-**Problem: API key errors**
-- Verify keys are correct in `.env`
-- Ensure no extra spaces or quotes in `.env` file
-- Check API key has sufficient credits/quota
-- Test API key with provider's official tools
-
-**Problem: Browser doesn't open automatically**
-- Manually navigate to http://localhost:8000/
-- Check firewall settings
-- Verify the backend started successfully
-
-**Problem: Streaming responses not working**
-- Check browser console for errors (F12)
-- Verify backend is running on port 8000
-- Verify the React frontend has been built into `frontend/dist-react`
-
-**Problem: Models not appearing**
-- Ensure at least one API key is configured
-- Check backend logs for provider initialization errors
-- Verify API keys are valid and active
-
-### Getting Help
-
-1. Check the console output for error messages
-2. Verify your `.env` configuration
-3. Test with a single provider first
-4. Check provider status pages for API outages
-5. Create an issue on GitHub with:
-   - Your operating system and Python version
-   - Error messages from console/logs
-   - Steps to reproduce the problem
-
----
 
 ## 🔄 Updating Metadelphi
 
 To update to a new version:
 
-1. Backup your `.env` file (contains your API keys)
+1. Backup your `config.toml` file (contains your API keys)
 2. Download the new version
 3. Extract to a new directory
-4. Copy your `.env` file to the new directory
+4. Copy your `config.toml` file to the new directory
 5. Run the installer again (it will update dependencies)
 
 Alternatively, if using git:
 
 ```bash
-# Backup your .env file
-cp .env .env.backup
+# Backup your config.toml file
+cp config.toml config.toml.backup
 
 # Pull latest changes
 git pull origin main
@@ -589,8 +409,8 @@ git pull origin main
 # Reinstall dependencies
 pip install -r requirements.txt
 
-# Restore your .env
-cp .env.backup .env
+# Restore your config.toml
+cp config.toml.backup config.toml
 ```
 
 ---
@@ -611,7 +431,7 @@ Contributions are welcome! Areas for improvement:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/metadelphi.git
+git clone https://github.com/TanyuSylvain/metadelphi.git
 cd metadelphi
 
 # Create virtual environment
@@ -621,9 +441,9 @@ source .venv/bin/activate  # or .venv\Scripts\activate.bat on Windows
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
-cp .env.template .env
-# Add your API keys
+# Configure application
+cp config.toml.template config.toml
+# Add your API keys to the [providers.*] sections
 
 # Build the React frontend
 cd frontend-react
