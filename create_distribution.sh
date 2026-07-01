@@ -22,22 +22,32 @@ mkdir -p "$DIST_DIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Files/directories to exclude
+# Never package files that may contain secrets, local user data, or large
+# reproducible artifacts (e.g., node_modules). The application creates a fresh
+# config.toml on first run from its defaults, so the real config is excluded.
 EXCLUDE_PATTERNS=(
     ".git"
     ".venv"
     "venv"
     "__pycache__"
     ".vscode"
+    ".cursor"
+    ".ruff_cache"
+    ".pytest_cache"
     ".DS_Store"
     "*.pyc"
     "*.pyo"
     "*.db"
     ".env"
+    "config.toml"
     "dist"
     "*.log"
     ".claude"
+    "CLAUDE.md"
     "create_distribution.sh"
     "INSTALLATION_SYSTEM_SUMMARY.md"
+    "frontend-react/node_modules"
+    "frontend-react/dist"
 )
 
 # Build exclude arguments for tar/zip
@@ -82,16 +92,23 @@ rsync -a \
     --exclude=venv \
     --exclude=__pycache__ \
     --exclude=.vscode \
+    --exclude=.cursor \
+    --exclude=.ruff_cache \
+    --exclude=.pytest_cache \
     --exclude=.DS_Store \
     --exclude='*.pyc' \
     --exclude='*.pyo' \
     --exclude='*.db' \
     --exclude=.env \
+    --exclude=config.toml \
     --exclude=dist \
     --exclude='*.log' \
     --exclude=.claude \
+    --exclude=CLAUDE.md \
     --exclude=create_distribution.sh \
     --exclude=INSTALLATION_SYSTEM_SUMMARY.md \
+    --exclude=frontend-react/node_modules \
+    --exclude=frontend-react/dist \
     "$SCRIPT_DIR/" "$WIN_TEMP/"
 
 # Create zip for Windows
