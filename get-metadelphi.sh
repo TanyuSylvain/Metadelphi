@@ -189,11 +189,11 @@ if [ ! -x "./install.sh" ]; then
 fi
 
 # If stdin is the pipe that fed this script, install.sh's interactive prompts
-# would read EOF. Attach the controlling terminal when available so prompts work.
+# would read EOF. Run it non-interactively so prompts default to "no".
 if [ -t 0 ]; then
     ./install.sh
 else
-    ./install.sh < /dev/tty 2>/dev/null || ./install.sh
+    ./install.sh < /dev/null
 fi
 
 echo ""
@@ -204,7 +204,7 @@ echo ""
 echo "Metadelphi is installed at: $INSTALL_DIR"
 echo ""
 echo "To start Metadelphi, open a new terminal and run:"
-echo "  metadelphi start"
+echo "  metadelphi"
 echo ""
 echo "Then open http://localhost:8000/ and click 'Open Configuration'"
 echo "to add your API keys."
