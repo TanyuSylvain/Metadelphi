@@ -192,18 +192,23 @@ if $PYTHON_CMD installer/create_launcher.py; then
     echo "✓ Desktop launcher created"
 else
     echo "Warning: Failed to create desktop launcher"
-    echo "You can still launch Metadelphi by running: metadelphi start"
+    echo "You can still launch Metadelphi by running: metadelphi"
 fi
 
 echo ""
-read -p "Enable Metadelphi auto-start at login? (y/n) " -n 1 -r || REPLY=""
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Setting up Metadelphi auto-start service..."
-    ./setup_service.sh || echo "Warning: Failed to enable auto-start. You can try again later with: ./setup_service.sh"
+if [ -t 0 ]; then
+    read -p "Enable Metadelphi auto-start at login? (y/n) " -n 1 -r || REPLY=""
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Setting up Metadelphi auto-start service..."
+        ./setup_service.sh || echo "Warning: Failed to enable auto-start. You can try again later with: ./setup_service.sh"
+    else
+        echo "Auto-start not enabled."
+        echo "You can enable it later by running: ./setup_service.sh"
+    fi
 else
-    echo "Auto-start not enabled."
-    echo "You can enable it later by running: ./setup_service.sh"
+    echo "Non-interactive install: skipping auto-start prompt."
+    echo "You can enable auto-start later by running: ./setup_service.sh"
 fi
 
 echo ""
@@ -212,7 +217,7 @@ echo "  Installation Complete!"
 echo "======================================"
 echo ""
 echo "To start Metadelphi, run:"
-echo "  metadelphi start"
+echo "  metadelphi"
 echo ""
 echo "Then open http://localhost:8000/ in your browser and click"
 echo "'Open Configuration' to add your API keys."
@@ -228,9 +233,13 @@ echo "  ./setup_service.sh"
 echo ""
 
 # Ask if user wants to launch now
-read -p "Would you like to launch Metadelphi now? (y/n) " -n 1 -r || REPLY=""
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Launching Metadelphi..."
-    ./launcher.sh
+if [ -t 0 ]; then
+    read -p "Would you like to launch Metadelphi now? (y/n) " -n 1 -r || REPLY=""
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Launching Metadelphi..."
+        ./launcher.sh
+    fi
+else
+    echo "Non-interactive install: skipping launch prompt."
 fi
