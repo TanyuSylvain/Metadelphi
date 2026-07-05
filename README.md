@@ -25,10 +25,10 @@ curl -fsSL https://raw.githubusercontent.com/TanyuSylvain/metadelphi/main/get-me
 Then open a new terminal and run:
 
 ```bash
-metadelphi start
+metadelphi
 ```
 
-Finally, open **http://localhost:8000/** and click **Open Configuration** to add your API keys.
+The service will start and the web UI will open automatically. Click **Open Configuration** to add your API keys.
 
 ### Windows
 
@@ -41,10 +41,10 @@ powershell -Command "& { Invoke-WebRequest -Uri 'https://raw.githubusercontent.c
 Then open a new Command Prompt and run:
 
 ```bat
-metadelphi start
+metadelphi
 ```
 
-Finally, open **http://localhost:8000/** and click **Open Configuration** to add your API keys.
+The service will start and the web UI will open automatically. Click **Open Configuration** to add your API keys.
 
 ### What the installer does
 
@@ -56,7 +56,7 @@ Finally, open **http://localhost:8000/** and click **Open Configuration** to add
 - ✅ Creates native application launchers (desktop shortcut / app icon)
 - ✅ Optionally registers a per-user auto-start service at login
 
-The application will be available at: **http://localhost:8000/**
+The application will open automatically in your browser once the service starts.
 
 If you skip auto-start during installation, you can enable it later with:
 - **Windows**: `setup_service.bat`
@@ -72,13 +72,22 @@ After installation, use the `metadelphi` command from any terminal:
 
 | Command | Description |
 |---------|-------------|
-| `metadelphi start` | Start the background service |
-| `metadelphi stop` | Stop the background service |
+| `metadelphi` | Start the background service and open the browser (default command) |
+| `metadelphi start` | Start the background service and open the browser |
+| `metadelphi start --no-browser` | Start the background service without opening the browser |
+| `metadelphi start --port 9000` | Start on a custom port (`-p 9000` also works) |
 | `metadelphi restart` | Restart the background service |
+| `metadelphi restart --port 9000` | Restart on a custom port |
+| `metadelphi stop` | Stop the background service |
 | `metadelphi status` | Check whether the service is running |
 | `metadelphi logs` | Show the latest backend log lines |
 | `metadelphi logs -f` | Follow the backend log in real time |
 | `metadelphi config` | Open the web UI in your browser |
+| `metadelphi config --print-url` | Print the web UI URL without opening the browser |
+| `metadelphi update` | Update Metadelphi to the latest release |
+| `metadelphi update --version x.y.z` | Update to a specific release version |
+| `metadelphi uninstall` | Remove Metadelphi from this machine (backs up data) |
+| `metadelphi uninstall --remove-data` | Remove Metadelphi and delete all data |
 
 ---
 
@@ -227,8 +236,7 @@ From the project directory, start the local launcher:
 launcher.bat
 ```
 
-The application will open automatically in your browser at:
-**http://localhost:8000/**
+The application will open automatically in your browser.
 
 If you want the global `metadelphi` command available from any terminal, run the installer instead:
 
@@ -312,7 +320,7 @@ transport = "sse"
 ## 🔌 API Documentation
 
 Full interactive API documentation is available at:
-**http://localhost:8000/docs** (when backend is running)
+**http://localhost:8000/docs** (when backend is running on the default port)
 
 ### Key Endpoints
 
@@ -389,7 +397,23 @@ Full interactive API documentation is available at:
 
 ## 🔄 Updating Metadelphi
 
-To update to a new version:
+The easiest way to update is with the CLI:
+
+```bash
+metadelphi update
+```
+
+This stops the service, downloads the latest release, preserves your `config.toml` and conversations, and restarts the service.
+
+To install a specific version:
+
+```bash
+metadelphi update --version x.y.z
+```
+
+### Manual update
+
+Alternatively, you can update manually:
 
 1. Backup your `config.toml` file (contains your API keys)
 2. Download the new version
@@ -397,7 +421,7 @@ To update to a new version:
 4. Copy your `config.toml` file to the new directory
 5. Run the installer again (it will update dependencies)
 
-Alternatively, if using git:
+If using git:
 
 ```bash
 # Backup your config.toml file

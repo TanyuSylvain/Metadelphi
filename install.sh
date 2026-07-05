@@ -22,26 +22,17 @@ fi
 echo "Detected OS: $OS"
 echo ""
 
-# Check for Python command (try python first, then python3)
+# Check for Python command (prefer python3, then python)
 echo "Checking Python installation..."
-if command -v python &> /dev/null; then
-    # Check if it's Python 3
-    PYTHON_VERSION=$(python --version 2>&1 | grep -oP '(?<=Python )\d+' | head -1)
-    if [ "$PYTHON_VERSION" -eq 3 ]; then
-        PYTHON_CMD="python"
-    else
-        # python exists but is Python 2, try python3
-        if command -v python3 &> /dev/null; then
-            PYTHON_CMD="python3"
-        else
-            PYTHON_CMD=""
+PYTHON_CMD=""
+for cmd in python3 python; do
+    if command -v "$cmd" &> /dev/null; then
+        if "$cmd" -c 'import sys; sys.exit(0 if sys.version_info.major == 3 else 1)' 2>/dev/null; then
+            PYTHON_CMD="$cmd"
+            break
         fi
     fi
-elif command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
-else
-    PYTHON_CMD=""
-fi
+done
 
 if [ -z "$PYTHON_CMD" ]; then
     echo "ERROR: Python 3 not found!"
@@ -117,15 +108,18 @@ source .venv/bin/activate
 
 # Upgrade pip
 echo "Upgrading pip..."
-pip install --upgrade pip --quiet
+if ! pip install --upgrade pip --quiet; then
+    echo ""
+    echo "ERROR: Failed to upgrade pip!"
+    echo "Please check your internet connection and try again."
+    exit 1
+fi
 
 echo ""
 echo "Installing dependencies..."
 echo "This may take a few minutes. Progress will be shown below:"
 echo "-----------------------------------------------------------"
-pip install -r requirements.txt
-
-if [ $? -ne 0 ]; then
+if ! pip install -r requirements.txt; then
     echo ""
     echo "ERROR: Failed to install dependencies!"
     echo "Please check your internet connection and try again."
@@ -194,9 +188,7 @@ echo ""
 
 # Create desktop launcher
 echo "Creating desktop launcher..."
-$PYTHON_CMD installer/create_launcher.py
-
-if [ $? -eq 0 ]; then
+if $PYTHON_CMD installer/create_launcher.py; then
     echo "✓ Desktop launcher created"
 else
     echo "Warning: Failed to create desktop launcher"
@@ -204,7 +196,7 @@ else
 fi
 
 echo ""
-read -p "Enable Metadelphi auto-start at login? (y/n) " -n 1 -r
+read -p "Enable Metadelphi auto-start at login? (y/n) " -n 1 -r || REPLY=""
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Setting up Metadelphi auto-start service..."
@@ -236,7 +228,7 @@ echo "  ./setup_service.sh"
 echo ""
 
 # Ask if user wants to launch now
-read -p "Would you like to launch Metadelphi now? (y/n) " -n 1 -r
+read -p "Would you like to launch Metadelphi now? (y/n) " -n 1 -r || REPLY=""
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Launching Metadelphi..."

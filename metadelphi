@@ -27,48 +27,45 @@ if [ ! -f "$SERVICE_RUNNER" ]; then
     exit 1
 fi
 
-COMMAND="${1:-}"
-shift 2>/dev/null || true
-
-case "$COMMAND" in
-    start|stop|restart|status|logs|run)
-        exec "$PYTHON_BIN" "$SERVICE_RUNNER" "$COMMAND" "$@"
-        ;;
-    config)
-        URL="http://localhost:8000/"
-        echo "Opening $URL in your browser..."
-        if command -v open >/dev/null 2>&1; then
-            open "$URL"
-        elif command -v xdg-open >/dev/null 2>&1; then
-            xdg-open "$URL" 2>/dev/null || true
-        else
-            echo "Please open $URL manually."
-        fi
-        ;;
-    help|--help|-h|"")
-        cat <<EOF
+# Handle help without invoking the service runner.
+if [ "$1" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    cat <<EOF
 Metadelphi CLI
 
-Usage: metadelphi <command>
+Usage: metadelphi [command] [options]
 
 Commands:
-  start     Start the background Metadelphi service.
-  stop      Stop the background Metadelphi service.
-  restart   Restart the background Metadelphi service.
-  status    Check whether the service is running.
-  logs      Show the backend log (use -f to follow).
-  config    Open the Metadelphi web UI in your browser.
-  help      Show this help message.
+  (no command)        Start the background service and open the browser
+  start               Start the background service and open the browser
+  start --no-browser  Start without opening the browser
+  start --port 9000   Start on a custom port (-p 9000 also works)
+  stop                Stop the background service
+  restart             Restart the background service
+  restart --port 9000 Restart on a custom port
+  status              Check whether the service is running
+  logs                Show the backend log
+  logs -f             Follow the backend log
+  config              Open the web UI in your browser
+  config --print-url  Print the web UI URL without opening the browser
+  update              Update Metadelphi to the latest release
+  update --version    Update to a specific release version
+  uninstall           Remove Metadelphi from this machine (backs up data)
+  uninstall --remove-data  Remove Metadelphi and delete all data
+  help                Show this help message
 
 Examples:
-  metadelphi start
-  metadelphi status
-  metadelphi logs -f
+  metadelphi
+  metadelphi start --port 9000
+  metadelphi restart -p 9000 --no-browser
+  metadelphi update
 EOF
-        ;;
-    *)
-        echo "Unknown command: $COMMAND"
-        echo "Run 'metadelphi help' for usage."
-        exit 1
-        ;;
-esac
+    exit 0
+fi
+
+# Default to 'start' when no command is provided, or when the first argument
+# looks like an option (e.g., `metadelphi --no-browser`).
+if [ $# -eq 0 ] || [[ "$1" == -* ]]; then
+    set -- start "$@"
+fi
+
+exec "$PYTHON_BIN" "$SERVICE_RUNNER" "$@"

@@ -13,7 +13,7 @@ export class ToolExecutionViewer {
         this.generatedFiles = [];
         this.deletedFiles = [];
         this.workspacePath = '';
-        this.baseURL = 'http://localhost:8000';
+        this.baseURL = '';
         const scrollElement = containerElement.closest('.coworking-panel') || containerElement.parentElement;
         this.smartScroller = scrollElement ? new SmartScroller(scrollElement) : null;
     }
