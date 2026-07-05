@@ -3,6 +3,53 @@
  * Handles rendering markdown content with syntax highlighting and math equations
  */
 
+// Configure the global marked instance once. marked.use() mutates the global
+// object, so calling it repeatedly stacks renderers and can break rendering.
+function configureMarked() {
+    if (typeof marked === 'undefined' || (marked).__metadelphiConfigured) {
+        return;
+    }
+
+    marked.use({
+        renderer: {
+            code(codeOrToken, language) {
+                let code, lang;
+                if (typeof codeOrToken === 'object' && codeOrToken !== null) {
+                    code = codeOrToken.text;
+                    lang = codeOrToken.lang || '';
+                } else {
+                    code = codeOrToken;
+                    lang = language || '';
+                }
+
+                // Defensive: marked can pass tokens with missing text in some
+                // versions or malformed inputs. Treat missing/invalid code as
+                // an empty block instead of letting highlight.js crash on it.
+                if (typeof code !== 'string') {
+                    code = '';
+                }
+                if (typeof lang !== 'string') {
+                    lang = '';
+                }
+
+                const escapedCode = code.replace(/&/g, '&amp;')
+                                        .replace(/</g, '&lt;')
+                                        .replace(/>/g, '&gt;');
+
+                if (typeof hljs !== 'undefined') {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
+                    }
+                    return `<pre><code class="hljs">${hljs.highlightAuto(code).value}</code></pre>`;
+                }
+                return `<pre><code>${escapedCode}</code></pre>`;
+            }
+        }
+    });
+
+    marked.__metadelphiConfigured = true;
+}
+
 export class MarkdownRenderer {
     constructor() {
         // Check if marked.js is available
@@ -11,40 +58,11 @@ export class MarkdownRenderer {
             this.markedAvailable = false;
         } else {
             this.markedAvailable = true;
-            this.configureMarked();
+            configureMarked();
         }
 
         // Check if KaTeX is available
         this.katexAvailable = typeof katex !== 'undefined';
-    }
-
-    /**
-     * Configure marked.js options
-     */
-    configureMarked() {
-        if (!this.markedAvailable) return;
-
-        marked.use({
-            renderer: {
-                code(codeOrToken, language) {
-                    let code, lang;
-                    if (typeof codeOrToken === 'object' && codeOrToken !== null) {
-                        code = codeOrToken.text;
-                        lang = codeOrToken.lang || '';
-                    } else {
-                        code = codeOrToken;
-                        lang = language || '';
-                    }
-                    if (typeof hljs !== 'undefined') {
-                        if (lang && hljs.getLanguage(lang)) {
-                            return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
-                        }
-                        return `<pre><code class="hljs">${hljs.highlightAuto(code).value}</code></pre>`;
-                    }
-                    return `<pre><code>${code}</code></pre>`;
-                }
-            }
-        });
     }
 
     /**
@@ -53,7 +71,14 @@ export class MarkdownRenderer {
      * @returns {string} HTML string
      */
     render(markdown) {
-        if (!markdown) return '';
+        // Guard against non-string inputs (undefined, null, objects, numbers).
+        // marked.parse() expects a string; passing anything else causes
+        // "undefined is not an object (evaluating '...replace')" errors.
+        if (typeof markdown !== 'string') {
+            if (markdown == null) return '';
+            markdown = String(markdown);
+        }
+        if (markdown.length === 0) return '';
 
         // Process math BEFORE markdown parsing to protect math content
         let mathPlaceholders = null;
@@ -92,6 +117,10 @@ export class MarkdownRenderer {
      */
     preProcessMath(text) {
         if (!this.katexAvailable) return { text, placeholders: null };
+
+        if (typeof text !== 'string') {
+            text = String(text);
+        }
 
         // Normalize LaTeX delimiters: convert \[ \] to $$ $$ and \( \) to $ $
         text = text.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
@@ -246,8 +275,20 @@ export class MarkdownRenderer {
      * @returns {string} HTML table
      */
     renderTable(markdown) {
+        if (typeof markdown !== 'string') {
+            if (markdown == null) return '';
+            markdown = String(markdown);
+        }
+        markdown = markdown.trim();
+        if (markdown.length === 0) return '';
+
         if (this.markedAvailable) {
-            return marked.parse(markdown);
+            try {
+                return marked.parse(markdown);
+            } catch (error) {
+                console.error('Error parsing table markdown:', error);
+                return this.escapeHtml(markdown);
+            }
         }
 
         // Basic table parsing

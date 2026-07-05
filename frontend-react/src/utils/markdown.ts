@@ -12,7 +12,15 @@ marked.setOptions({
 
 // Syntax highlighting renderer
 const renderer = new marked.Renderer()
-renderer.code = ({ text, lang }) => {
+renderer.code = (codeOrToken) => {
+  // marked v13 passes { text, lang, escaped }; older versions pass raw arguments.
+  const token = (typeof codeOrToken === 'object' && codeOrToken !== null)
+    ? (codeOrToken as { text?: unknown; lang?: unknown })
+    : { text: codeOrToken as unknown, lang: undefined }
+
+  const text = typeof token.text === 'string' ? token.text : ''
+  const lang = typeof token.lang === 'string' ? token.lang : ''
+
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const highlighted = hljs.highlight(text, { language }).value
   return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`
@@ -24,6 +32,10 @@ interface MathPlaceholders {
 }
 
 function preprocessMath(text: string): { text: string; placeholders: MathPlaceholders } {
+  if (typeof text !== 'string') {
+    text = String(text ?? '')
+  }
+
   const placeholders: MathPlaceholders = { values: [] }
 
   const addPlaceholder = (math: string, displayMode: boolean, fallback: string) => {
@@ -82,9 +94,19 @@ function renderCitations(text: string, citations?: Citation[]): string {
 }
 
 export function renderMarkdown(text: string, citations?: Citation[]): string {
+  if (typeof text !== 'string') {
+    text = String(text ?? '')
+  }
+
   const { text: preprocessed, placeholders } = preprocessMath(text)
   const withCitations = renderCitations(preprocessed, citations)
-  const html = marked.parse(withCitations) as string
+  let html: string
+  try {
+    html = marked.parse(withCitations) as string
+  } catch (error) {
+    console.error('Error parsing markdown:', error)
+    html = escapeHtml(text).replace(/\n/g, '<br>')
+  }
   const withMath = restoreMath(html, placeholders)
   return DOMPurify.sanitize(withMath, {
     ADD_TAGS: [
@@ -99,5 +121,8 @@ export function renderMarkdown(text: string, citations?: Citation[]): string {
 }
 
 export function renderPlain(text: string): string {
+  if (typeof text !== 'string') {
+    text = String(text ?? '')
+  }
   return DOMPurify.sanitize(text.replace(/\n/g, '<br>'))
 }
